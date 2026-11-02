@@ -117,10 +117,10 @@ double IgnitionModule::getTimingAdvance() {
     const double speed = -m_crankshaft->m_body.v_theta;       // rad/s, positive while the engine runs
 
     if (!m_mapSpeeds.empty()) {
-        return sampleTimingMap(units::toRpm(speed), m_filteredLoad);
+        return sampleTimingMap(units::toRpm(speed), m_filteredLoad) + m_advanceOffset;
     }
 
-    return m_timingCurve->sampleTriangle(speed);
+    return m_timingCurve->sampleTriangle(speed) + m_advanceOffset;
 }
 
 void IgnitionModule::setTimingMap(

@@ -9,8 +9,10 @@ class Simulator;
 
 // Automatic dyno run on the *running* simulator, so the engine can be heard while it is measured.
 //
-// Two modes:
+// Three modes:
 //  - steps: the engine is held at one speed after the other and the torque is averaged (steady state)
+//  - hold:  the engine is started and then kept at one speed (start = speed) until the run is stopped, e.g. to
+//           tune the ignition at full load. Speed and throttle can be changed while it runs (setHold).
 //  - ramp:  full-throttle pull from a low speed up to the rev limiter. The dynamometer lets the engine
 //           accelerate at a constant rate; the torque follows from the load plus the acceleration of
 //           the rotating mass (like an inertia dyno). No fixed steps, the curve is continuous.
@@ -26,6 +28,7 @@ class DynoSweep {
             int measureCycles = 10;      // steps mode: 720 degree cycles to average over
             double throttle = 1.0;       // speed control: 1.0 = wide open
             bool ramp = false;
+            bool hold = false;           // hold mode: keep rpmStart until stopped
             double rampRate = 300.0;     // ramp mode: acceleration in rpm per second
         };
 
@@ -45,11 +48,15 @@ class DynoSweep {
 
         bool start(const Parameters &params, Engine *engine, Simulator *simulator, std::string *error);
         void abort(const char *reason, Engine *engine, Simulator *simulator);
+        // hold mode only: new speed [rpm] and throttle while the run is active
+        bool setHold(double rpm, double throttle, Engine *engine, std::string *error);
         void update(float dt, Engine *engine, Simulator *simulator);
         void sample(Simulator *simulator, Engine *engine);
 
         bool isActive() const { return m_state == State::Starting || m_state == State::Running; }
         State getState() const { return m_state; }
+        const char *stateName() const;
+        const char *modeName() const { return m_params.hold ? "hold" : (m_params.ramp ? "ramp" : "steps"); }
         const std::vector<Point> &getPoints() const { return m_points; }
 
         // {"state":"running","progress":0.4,"rpm":3000,"points":[...]}
@@ -73,6 +80,7 @@ class DynoSweep {
         void finish(State state, const char *message, Simulator *simulator);
         void updateSteps(Engine *engine, Simulator *simulator);
         void updateRamp(Engine *engine, Simulator *simulator);
+        void updateHold(Engine *engine, Simulator *simulator);
         std::vector<Point> rampPoints(bool onlyFinished) const;
 
         State m_state;

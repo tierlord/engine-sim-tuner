@@ -43,6 +43,8 @@ export function initBuild(hooks) {
     let autoErrors = [];
     let alpha = 0, sel = -1, keepFire = true, playing = false, lastT = 0;
     let lastCode = '', dirty = false, loadedOnce = false;
+    let loadedSnap = null;                      // parameters of the engine that was loaded last (for the run comparison)
+    try { loadedSnap = JSON.parse(localStorage.getItem(STORE + 'Loaded')); } catch (e) { loadedSnap = null; }
 
     /* ------------------------------------------------------------ form */
 
@@ -438,6 +440,8 @@ export function initBuild(hooks) {
             const text = generate(readParams(), cfg, tuning).text;
             const answer = await api.post('/engine', text);
             if (answer.ok) {
+                loadedSnap = { p: readParams(), cfg: JSON.parse(JSON.stringify(cfg)) };
+                try { localStorage.setItem(STORE + 'Loaded', JSON.stringify(loadedSnap)); } catch (e) { /* ignore */ }
                 dirty = false; loadedOnce = true; updateStale();
                 status(answer.mode === 'live' ? 'Geladen (ohne Neustart).' : 'Motor neu geladen.', 'ok');
                 hooks.onLoaded();
@@ -481,5 +485,8 @@ export function initBuild(hooks) {
     if (saved) restore(saved); else { writeParams(defaults); applyAuto(); }
     updateStale();
 
-    return { updateStale };
+    // what the simulator is running (or, if unknown, what the form says now)
+    const snapshot = () => loadedSnap || { p: readParams(), cfg: JSON.parse(JSON.stringify(cfg)) };
+
+    return { updateStale, snapshot };
 }

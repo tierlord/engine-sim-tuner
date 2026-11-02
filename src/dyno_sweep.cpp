@@ -76,11 +76,13 @@ bool DynoSweep::parseParameters(const std::string &text, Parameters *params) {
         else if (key == "settle") params->settleCycles = (int)value;
         else if (key == "measure") params->measureCycles = (int)value;
         else if (key == "throttle") params->throttle = value;
-        else if (key == "mode") params->ramp = valueText.find("ramp") != std::string::npos;
+        else if (key == "mode") { params->ramp = valueText.find("ramp") != std::string::npos; params->hold = valueText.find("hold") != std::string::npos; }
         else if (key == "rate") params->rampRate = value;
     }
 
     if (!(params->rpmStart > 0) || !(params->throttle >= 0.0 && params->throttle <= 1.0)) return false;
+
+    if (params->hold) return params->rpmStart >= 500 && params->rpmStart <= 20000;
 
     if (params->ramp) {
         return params->rampRate >= 20 && params->rampRate <= 5000
@@ -99,10 +101,15 @@ bool DynoSweep::start(const Parameters &params, Engine *engine, Simulator *simul
 
     // Above the rev limiter the ignition is cut and the result would be meaningless
     const double limiter = units::toRpm(engine->getIgnitionModule()->getRevLimit()) * 0.97;
-    m_params.rpmEnd = (m_params.rpmEnd > 0) ? std::min(m_params.rpmEnd, limiter) : limiter;
-    if (m_params.rpmEnd < m_params.rpmStart + (m_params.ramp ? 200.0 : 0.0)) {
-        *error = "start speed is too close to (or above) the rev limiter";
-        return false;
+    if (m_params.hold) {
+        if (m_params.rpmStart > limiter) { *error = "speed is above the rev limiter"; return false; }
+    }
+    else {
+        m_params.rpmEnd = (m_params.rpmEnd > 0) ? std::min(m_params.rpmEnd, limiter) : limiter;
+        if (m_params.rpmEnd < m_params.rpmStart + (m_params.ramp ? 200.0 : 0.0)) {
+            *error = "start speed is too close to (or above) the rev limiter";
+            return false;
+        }
     }
 
     m_points.clear();
@@ -119,7 +126,8 @@ bool DynoSweep::start(const Parameters &params, Engine *engine, Simulator *simul
     m_timestep = simulator->getTimestep();
     m_cylinders = std::max(engine->getCylinderCount(), 1);
     m_lastKnockEvents = engine->getKnockEventCount();
-    m_bins.assign((size_t)std::ceil((m_params.rpmEnd - m_params.rpmStart) / BinWidthRpm) + 3, Bin());
+    if (m_params.hold) m_bins.clear();
+    else m_bins.assign((size_t)std::ceil((m_params.rpmEnd - m_params.rpmStart) / BinWidthRpm) + 3, Bin());
 
     m_savedDynoEnabled = simulator->m_dyno.m_enabled;
     m_savedDynoHold = simulator->m_dyno.m_hold;
@@ -164,7 +172,7 @@ void DynoSweep::update(float dt, Engine *engine, Simulator *simulator) {
             simulator->m_starterMotor.m_enabled = false;
             m_state = State::Running;
             m_phaseStart = m_simTime;
-            if (!m_params.ramp) beginPoint();
+            if (!m_params.ramp && !m_params.hold) beginPoint();
         }
         else {
             simulator->m_starterMotor.m_enabled = true;
@@ -173,8 +181,31 @@ void DynoSweep::update(float dt, Engine *engine, Simulator *simulator) {
         }
     }
 
-    if (m_params.ramp) updateRamp(engine, simulator);
+    if (m_params.hold) updateHold(engine, simulator);
+    else if (m_params.ramp) updateRamp(engine, simulator);
     else updateSteps(engine, simulator);
+}
+
+void DynoSweep::updateHold(Engine *engine, Simulator *simulator) {
+    // The speed is kept by the dynamometer until the run is stopped; nothing is recorded
+    simulator->m_starterMotor.m_enabled = false;
+    engine->setSpeedControl(m_params.throttle);
+    simulator->m_dyno.m_enabled = true;
+    simulator->m_dyno.m_hold = true;
+    simulator->m_dyno.m_rotationSpeed = units::rpm(m_rpm);
+}
+
+bool DynoSweep::setHold(double rpm, double throttle, Engine *engine, std::string *error) {
+    if (!isActive() || !m_params.hold) { *error = "no hold run is active"; return false; }
+    if (engine == nullptr) { *error = "no engine loaded"; return false; }
+
+    const double limiter = units::toRpm(engine->getIgnitionModule()->getRevLimit()) * 0.97;
+    if (!(rpm >= 500) || rpm > limiter) { *error = "speed must be between 500 rpm and the rev limiter"; return false; }
+
+    m_params.rpmStart = rpm;
+    m_rpm = rpm;
+    m_params.throttle = std::fmin(std::fmax(throttle, 0.0), 1.0);
+    return true;
 }
 
 void DynoSweep::updateSteps(Engine *engine, Simulator *simulator) {
@@ -269,6 +300,7 @@ void DynoSweep::sample(Simulator *simulator, Engine *engine) {
     if (m_state != State::Running) return;
 
     m_simTime += simulator->getTimestep();
+    if (m_params.hold) return;
 
     if (m_params.ramp) {
         if (!m_rampActive) return;
@@ -378,15 +410,18 @@ void DynoSweep::abort(const char *reason, Engine *engine, Simulator *simulator) 
     }
 }
 
-std::string DynoSweep::statusJson() const {
-    const char *state = "idle";
+const char *DynoSweep::stateName() const {
     switch (m_state) {
-        case State::Starting: state = "starting"; break;
-        case State::Running: state = "running"; break;
-        case State::Done: state = "done"; break;
-        case State::Aborted: state = "aborted"; break;
-        default: break;
+        case State::Starting: return "starting";
+        case State::Running: return "running";
+        case State::Done: return "done";
+        case State::Aborted: return "aborted";
+        default: return "idle";
     }
+}
+
+std::string DynoSweep::statusJson() const {
+    const char *state = stateName();
 
     double progress;
     if (m_state == State::Done) progress = 1.0;
@@ -397,7 +432,7 @@ std::string DynoSweep::statusJson() const {
     const bool partial = m_params.ramp && m_state == State::Running;
     const std::vector<Point> points = partial ? rampPoints(true) : m_points;
 
-    std::string json = "{\"state\":\"" + std::string(state) + "\",\"mode\":\"" + (m_params.ramp ? "ramp" : "steps")
+    std::string json = "{\"state\":\"" + std::string(state) + "\",\"mode\":\"" + modeName()
         + "\",\"progress\":" + num(progress)
         + ",\"rpm\":" + num(m_rpm)
         + ",\"damage\":" + num(m_damage)

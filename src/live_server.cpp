@@ -257,6 +257,7 @@ bool LiveServer::handleConnection(uintptr_t clientHandle) {
         (method == "POST" && path == "/engine")
         || (method == "POST" && path == "/dyno")
         || (method == "POST" && path == "/dyno/stop")
+        || (method == "POST" && path == "/dyno/hold")
         || (method == "GET" && path == "/dyno")
         || (method == "GET" && path == "/telemetry")
         || (method == "GET" && path == "/tune")

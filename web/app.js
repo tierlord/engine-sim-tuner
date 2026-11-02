@@ -5,6 +5,7 @@
 
 import { $, nums, api, soon } from './util.js';
 import { initBuild } from './build.js';
+import { initDyno } from './dyno.js';
 
 /* ------------------------------------------------------------------ views */
 
@@ -13,7 +14,6 @@ const SOON = {
     cam: ['Ventiltrieb', 'Hub, Dauer und Lage von Ein- und Auslass im Betrieb, dazu die VTEC-Werte.'],
     air: ['Ansaugung & Abgas', 'Kommt später.'],
     turbo: ['Aufladung', 'Kommt später.'],
-    dyno: ['Prüfstand & Vergleich', 'Messläufe mit Diagramm und Lauf-Vergleich ziehen als Nächstes um. Bis dahin: tools/engine-builder.html.'],
 };
 
 let buildView = 'b-layout';
@@ -21,7 +21,7 @@ let buildView = 'b-layout';
 function show(view) {
     document.querySelectorAll('main section').forEach(s => s.classList.remove('act'));
     if (view.startsWith('b-')) buildView = view;
-    if (view === 'ign' || view.startsWith('b-')) $('v-' + view).classList.add('act');
+    if (view === 'ign' || view === 'dyno' || view.startsWith('b-')) $('v-' + view).classList.add('act');
     else {
         $('soon-title').textContent = SOON[view][0];
         $('soon-text').textContent = SOON[view][1];
@@ -49,6 +49,7 @@ const fmt = (v, d = 0) => Number.isFinite(v) ? v.toLocaleString('de-DE', { maxim
 
 function onTelemetry(d) {
     last = d;
+    if (typeof dyno !== 'undefined') dyno.onTelemetry(d);
     $('engineName').textContent = d.engine ? `${d.name} · ${fmt(d.octane)} ROZ` : 'kein Motor';
     if (!d.engine) return;
 
@@ -217,6 +218,23 @@ function placeDot(rpm, kpa) {
     dot.classList.remove('hidden');
 }
 
+function foldAdvance(offset, d) {
+    const round = v => Math.round(v * 10) / 10;
+    if (map.on) {
+        const [i0, i1] = fraction(map.rpm, d.rpm), [j0, j1] = fraction(map.load, d.map_kpa);
+        const rows = map.load.length;
+        for (const i of new Set([i0, i1])) for (const j of new Set([j0, j1])) map.adv[i * rows + j] = round(map.adv[i * rows + j] + offset);
+        renderMap();
+        pushMap();
+        return `${offset > 0 ? '+' : ''}${offset}° im Kennfeld bei ${Math.round(d.rpm)} U/min und ${Math.round(d.map_kpa)} kPa übernommen.`;
+    }
+
+    setField('c-idle', round(+$('c-idle').value + offset));
+    setField('c-max', round(+$('c-max').value + offset));
+    api.post('/tune', 'timing_curve ' + curveText());
+    return `${offset > 0 ? '+' : ''}${offset}° in der Zündkurve übernommen (Leerlauf und Maximum).`;
+}
+
 /* ------------------------------------------------------------------ start */
 
 const build = initBuild({
@@ -225,6 +243,12 @@ const build = initBuild({
 });
 
 // a first start without an engine opens the build view
+const dyno = initDyno({
+    getSnapshot: () => build.snapshot(),
+    getTune: async () => { try { return (await api.get('/tune')).values || {}; } catch (e) { return {}; } },
+    foldAdvance,
+});
+
 setMode('tune');
 connect();
 setTimeout(() => { if (!(last && last.engine)) setMode('build'); }, 1500);

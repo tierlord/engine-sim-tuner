@@ -59,6 +59,9 @@ class IgnitionModule : public Part {
 
         // Engine load for the map (manifold pressure in Pa), set before every update()
         void setLoadPressure(double pressure) { m_loadPressure = pressure; }
+        // Added to the advance of the curve or the map: lets the advance be tuned live (e.g. on the dyno at one speed)
+        void setAdvanceOffset(double radians) { m_advanceOffset = radians; }
+        double getAdvanceOffset() const { return m_advanceOffset; }
         double getFilteredLoadPressure() const { return m_filteredLoad; }
 
         bool m_enabled;
@@ -73,6 +76,7 @@ class IgnitionModule : public Part {
         std::vector<double> m_mapLoads;
         std::vector<double> m_mapValues;
         double m_loadPressure;
+        double m_advanceOffset = 0.0;
         double m_filteredLoad;
         SparkPlug *m_plugs;
         Crankshaft *m_crankshaft;

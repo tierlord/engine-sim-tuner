@@ -490,14 +490,14 @@ std::string SimulationSession::telemetryJson() {
         return "{\"ok\":true,\"engine\":false}";
     }
 
-    char text[1400];
+    char text[1600];
     IgnitionModule *ignition = m_iceEngine->getIgnitionModule();
     std::snprintf(text, sizeof(text),
         "{\"ok\":true,\"engine\":true,\"name\":\"%s\",\"rpm\":%.1f,\"redline\":%.0f,"
         "\"throttle\":%.3f,\"map_kpa\":%.1f,\"advance_deg\":%.1f,\"torque_nm\":%.1f,\"power_kw\":%.2f,"
         "\"gear\":%d,\"clutch\":%.2f,\"speed_kmh\":%.1f,\"starter\":%s,\"ignition\":%s,"
         "\"dyno\":%s,\"dyno_hold\":%s,\"knock\":%.3f,\"knock_events\":%ld,\"damage\":%.3f,\"destroyed\":%s,"
-        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s}",
+        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f}",
         jsonEscape(m_iceEngine->getName()).c_str(),
         m_iceEngine->getRpm(),
         units::toRpm(m_iceEngine->getRedline()),
@@ -519,7 +519,10 @@ std::string SimulationSession::telemetryJson() {
         m_iceEngine->isDestroyed() ? "true" : "false",
         m_iceEngine->getFuel()->getOctane(),
         (m_iceEngine->hasHighLift() && m_iceEngine->isHighLiftActive()) ? "true" : "false",
-        m_live ? "true" : "false");
+        m_live ? "true" : "false",
+        m_dynoSweep.stateName(),
+        m_dynoSweep.modeName(),
+        ignition->getAdvanceOffset() / units::deg);
 
     return text;
 }
@@ -719,6 +722,11 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
         }
     }
 
+    if (number("advance_offset", &v)) {
+        m_iceEngine->getIgnitionModule()->setAdvanceOffset(v * units::deg);
+        applied += " advance_offset=" + std::to_string(v).substr(0, 5);
+    }
+
     if (number("fuel_octane", &v)) {
         m_iceEngine->getFuel()->setOctane(v);
         applied += " octane=" + std::to_string((int)v);
@@ -880,6 +888,26 @@ std::string SimulationSession::handleLiveRoute(
 
     if (method == "GET" && path == "/dyno") {
         return m_dynoSweep.statusJson();
+    }
+
+    if (method == "POST" && path == "/dyno/hold") {
+        double rpm = 0, throttle = 1;
+        std::stringstream lines(body);
+        std::string line;
+        while (std::getline(lines, line)) {
+            const size_t eq = line.find('=');
+            if (eq == std::string::npos) continue;
+            const std::string key = line.substr(0, eq);
+            const double value = std::atof(line.c_str() + eq + 1);
+            if (key == "rpm") rpm = value;
+            else if (key == "throttle") throttle = value;
+        }
+
+        std::string error;
+        if (!m_dynoSweep.setHold(rpm, throttle, m_iceEngine, &error)) {
+            return "{\"ok\":false,\"error\":\"" + jsonEscape(error) + "\"}";
+        }
+        return "{\"ok\":true}";
     }
 
     if (method == "POST" && path == "/dyno/stop") {

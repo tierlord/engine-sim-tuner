@@ -107,3 +107,12 @@ button:disabled { opacity: .45; cursor: default; }
 #endwrap svg { max-width: 100%; height: auto; }
 .bfield { grid-template-columns: minmax(0, 1fr) minmax(110px, 170px); }
 main { min-width: 0; }
+
+/* ----- Prüfstand ----- */
+.runs .run { grid-template-columns: 14px minmax(0, 1fr) auto; }
+.run input.nm { width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 3px 6px; font: inherit; }
+.run small { display: block; color: var(--dim); line-height: 1.35; }
+.run small.chg { color: var(--yellow); }
+.run .sw { cursor: pointer; }
+.bar { margin: 8px 0; }
+#h-chart svg, #d-chart svg { display: block; }
