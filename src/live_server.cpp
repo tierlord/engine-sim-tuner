@@ -105,14 +105,17 @@ LiveServer::~LiveServer() {
 bool LiveServer::start(int port) {
     if (m_running) return true;
 
+    m_port = port;                                   // also kept when the port turns out to be busy
+
     WSADATA wsa;
     if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
 
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) return false;
 
-    BOOL reuse = TRUE;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const char *)&reuse, sizeof(reuse));
+    // Windows: SO_REUSEADDR would let a second program bind the same port; exclusive use reports it as busy
+    BOOL exclusive = TRUE;
+    setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&exclusive, sizeof(exclusive));
 
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
@@ -125,7 +128,6 @@ bool LiveServer::start(int port) {
     }
 
     m_listenSocket = (uintptr_t)s;
-    m_port = port;
     m_running = true;
     m_hasRequest = false;
     m_hasResponse = false;

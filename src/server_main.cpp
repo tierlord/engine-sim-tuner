@@ -3,13 +3,16 @@
 // Runs the engine, plays the sound through SDL audio and serves the HTTP interface (engine builder,
 // dyno, controls, telemetry) on 127.0.0.1. Stop it with Ctrl+C.
 //
-//   engine-sim-server [--port N] [--throttle 0..1] [--exit-when-idle] [--grace S] [--startup-timeout S]
-//                     [--open URL]
+//   engine-sim-server [--port N] [--throttle 0..1] [--no-open] [--keep-alive] [--open URL]
+//                     [--grace S] [--startup-timeout S]
 //
-// Lifetime: every open GET /events stream is a user interface that is alive. With --exit-when-idle the
-// server fades the sound out and quits when the last stream has been gone for --grace seconds (default 8,
-// long enough for a page reload) or when none ever connected within --startup-timeout seconds (default 20).
-// --open starts the interface (a Chromium based browser in app mode on Windows, the default browser elsewhere).
+// Start: the user interface opens by itself (a Chromium based browser in app mode on Windows, the default
+// browser elsewhere). --no-open skips that, --open URL opens another loopback address.
+//
+// Lifetime: every open GET /events stream is a user interface that is alive. The server fades the sound
+// out and quits when the last stream has been gone for --grace seconds (default 8, long enough for a page
+// reload) or when none ever connected within --startup-timeout seconds (default 30). --keep-alive turns
+// this off, the server then runs until Ctrl+C.
 //
 // Environment (same as the windowed application): ENGINE_SIM_LIVE_ENTRY, ENGINE_SIM_LIVE_FILE, ENGINE_SIM_LIVE_PORT
 #ifndef NOMINMAX
@@ -114,9 +117,10 @@ void audioCallback(void *, Uint8 *stream, int length) {
 
 int main(int argc, char **argv) {
     double throttle = 0.0;
-    bool exitWhenIdle = false;
+    bool exitWhenIdle = true;
+    bool openInterface = true;
     double graceSeconds = 8.0;
-    double startupTimeout = 20.0;
+    double startupTimeout = 30.0;
     std::string openUrl;
     for (int i = 1; i < argc; ++i) {
         if (std::strcmp(argv[i], "--port") == 0 && i + 1 < argc) {
@@ -130,7 +134,13 @@ int main(int argc, char **argv) {
             throttle = std::atof(argv[++i]);
         }
         else if (std::strcmp(argv[i], "--exit-when-idle") == 0) {
-            exitWhenIdle = true;
+            exitWhenIdle = true;                       // default, kept for older command lines
+        }
+        else if (std::strcmp(argv[i], "--keep-alive") == 0) {
+            exitWhenIdle = false;
+        }
+        else if (std::strcmp(argv[i], "--no-open") == 0) {
+            openInterface = false;
         }
         else if (std::strcmp(argv[i], "--grace") == 0 && i + 1 < argc) {
             graceSeconds = std::atof(argv[++i]);
@@ -142,7 +152,7 @@ int main(int argc, char **argv) {
             openUrl = argv[++i];
         }
         else {
-            std::printf("usage: engine-sim-server [--port N] [--throttle 0..1] [--exit-when-idle] [--grace S] [--startup-timeout S] [--open URL]\n");
+            std::printf("usage: engine-sim-server [--port N] [--throttle 0..1] [--no-open] [--keep-alive] [--open URL] [--grace S] [--startup-timeout S]\n");
             return 1;
         }
     }
@@ -157,6 +167,12 @@ int main(int argc, char **argv) {
 
     // Live mode loads assets/live_entry.mr and starts the HTTP server
     session.toggleLive();
+
+    if (!session.liveServer().isRunning()) {
+        std::printf("[server] port %d is busy: another simulator is already running. Opening its interface.\n", session.liveServer().getPort());
+        if (openInterface) launchInterface("http://127.0.0.1:" + std::to_string(session.liveServer().getPort()) + "/");
+        return 4;
+    }
     session.input().throttle = throttle;
 
     if (SDL_Init(SDL_INIT_AUDIO) != 0) {
@@ -180,7 +196,11 @@ int main(int argc, char **argv) {
         SDL_GetCurrentAudioDriver(), have.freq, session.liveServer().getPort());
     std::fflush(stdout);
 
-    if (!openUrl.empty()) launchInterface(openUrl);
+    const std::string interfaceUrl = !openUrl.empty()
+        ? openUrl
+        : "http://127.0.0.1:" + std::to_string(session.liveServer().getPort()) + "/";
+    std::printf("[server] interface: %s\n", interfaceUrl.c_str());
+    if (openInterface || !openUrl.empty()) launchInterface(interfaceUrl);
 
     bool audioStarted = false;
     std::vector<int16_t> buffer;
