@@ -23,8 +23,7 @@
 #include "info_cluster.h"
 #include "application_settings.h"
 #include "transmission.h"
-#include "live_server.h"
-#include "dyno_sweep.h"
+#include "simulation_session.h"
 
 #include "delta.h"
 #include "dtv.h"
@@ -49,7 +48,6 @@ class EngineSimApplication {
         void run();
         void destroy();
 
-        void loadEngine(Engine *engine, Vehicle *vehicle, Transmission *transmission);
         void drawGenerated(
                 const GeometryGenerator::GeometryIndices &indices,
                 int layer = 0);
@@ -91,20 +89,12 @@ class EngineSimApplication {
         int getScreenWidth() const { return m_screenWidth; }
         int getScreenHeight() const { return m_screenHeight; }
 
-        Simulator *getSimulator() { return m_simulator; }
+        Simulator *getSimulator() { return m_session.simulator(); }
+        SimulationSession *getSession() { return &m_session; }
         InfoCluster *getInfoCluster() { return m_infoCluster; }
         ApplicationSettings* getAppSettings() { return &m_applicationSettings; }
 
     protected:
-        bool loadScript(
-            const std::string &path = "../assets/main.mr",
-            bool keepOnFailure = false);
-        bool reloadScript();
-        void toggleLiveReload();
-        void updateLiveReload(float dt);
-        std::string applyLiveTuning(const std::string &path);
-        std::string handleLiveRequest(const std::string &body);
-        std::string handleLiveRoute(const std::string &method, const std::string &path, const std::string &body);
         void processEngineInput();
         void renderScene();
 
@@ -146,10 +136,7 @@ class EngineSimApplication {
         dbasic::TextRenderer m_textRenderer;
 
         std::vector<SimulationObject *> m_objects;
-        Engine *m_iceEngine;
-        Vehicle *m_vehicle;
-        Transmission *m_transmission;
-        Simulator *m_simulator;
+        SimulationSession m_session;           // script, simulator, live tuning, dyno, builder server
         double m_dynoSpeed;
         double m_torque;
 
@@ -166,21 +153,6 @@ class EngineSimApplication {
         SimulationObject::ViewParameters m_viewParameters;
 
         bool m_paused;
-
-        // Live reload: watches the file written by tools/engine-builder.html
-        bool m_liveReload = false;
-        bool m_livePending = false;
-        float m_livePollTimer = 0.0f;
-        std::filesystem::file_time_type m_liveStamp;
-        DynoSweep m_dynoSweep;                 // automatic dyno run on the running simulator
-        LiveServer m_liveServer;               // lets tools/engine-builder.html push engines without a file picker
-        std::deque<std::vector<Function *>> m_liveLobes;   // cam lobes rebuilt by applyLiveTuning (the newest are in use)
-        std::string m_lastCamLow;                          // last "cam_low" / "cam_high" values, to skip identical updates
-        std::string m_lastCamHigh;
-        bool m_lastHighLift = false;                       // for the "CAM: HIGH LIFT" message
-        int m_lastRepairCounter = -1;          // "engine_repair" counter of the engine builder
-        std::string m_liveStructure;           // structure hash of the engine currently loaded in live mode
-        Function *m_liveTimingCurve = nullptr; // timing curve created by applyLiveTuning
 
     protected:
         void startRecording();

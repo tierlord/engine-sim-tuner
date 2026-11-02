@@ -63,7 +63,6 @@ EngineSimApplication::EngineSimApplication() {
     m_torque = 0;
     m_dynoSpeed = 0;
 
-    m_simulator = nullptr;
     m_engineView = nullptr;
     m_rightGaugeCluster = nullptr;
     m_temperatureGauge = nullptr;
@@ -73,11 +72,7 @@ EngineSimApplication::EngineSimApplication() {
     m_loadSimulationCluster = nullptr;
     m_mixerCluster = nullptr;
     m_infoCluster = nullptr;
-    m_iceEngine = nullptr;
     m_mainRenderTarget = nullptr;
-
-    m_vehicle = nullptr;
-    m_transmission = nullptr;
 
     m_oscillatorSampleOffset = 0;
     m_gameWindowHeight = 256;
@@ -170,7 +165,33 @@ void EngineSimApplication::initialize() {
     m_textRenderer.SetRenderer(m_engine.GetUiRenderer());
     m_textRenderer.SetFont(m_engine.GetConsole()->GetFont());
 
-    loadScript();
+    m_session.callbacks.log = [this](const std::string &message) {
+        if (m_infoCluster != nullptr) m_infoCluster->setLogMessage(message);
+    };
+    m_session.callbacks.beforeEngineReplaced = [this]() { destroyObjects(); };
+    m_session.callbacks.engineLoaded = [this]() {
+        Engine *engine = m_session.engine();
+        if (engine != nullptr) {
+            createObjects(engine);
+            m_viewParameters.Layer1 = engine->getMaxDepth();
+        }
+        else {
+            m_viewParameters.Layer1 = 0;
+        }
+
+        refreshUserInterface();
+    };
+    m_session.callbacks.settings = [this](const ApplicationSettings &settings) { configure(settings); };
+    m_session.callbacks.reloadBegin = [this]() {
+        if (m_audioSource != nullptr) m_audioSource->SetMode(ysAudioSource::Mode::Stop);
+    };
+    m_session.callbacks.reloadEnd = [this]() {
+        if (m_audioSource != nullptr && m_session.simulator() != nullptr && m_session.simulator()->getEngine() != nullptr) {
+            m_audioSource->SetMode(ysAudioSource::Mode::Loop);
+        }
+    };
+
+    m_session.loadScript();
 
     m_audioBuffer.initialize(44100, 44100);
     m_audioBuffer.m_writePointer = (int)(44100 * 0.1);
@@ -183,7 +204,7 @@ void EngineSimApplication::initialize() {
         m_engine.GetAudioDevice()->CreateBuffer(&params, 44100);
 
     m_audioSource = m_engine.GetAudioDevice()->CreateSource(m_outputAudioBuffer);
-    m_audioSource->SetMode((m_simulator->getEngine() != nullptr)
+    m_audioSource->SetMode((m_session.simulator()->getEngine() != nullptr)
         ? ysAudioSource::Mode::Loop
         : ysAudioSource::Mode::Stop);
     m_audioSource->SetPan(0.0f);
@@ -197,8 +218,8 @@ void EngineSimApplication::initialize() {
     GetDiscordManager()->SetUseDiscord(true);
     DiscordRichPresence passMe = { 0 };
 
-    std::string engineName = (m_iceEngine != nullptr)
-        ? m_iceEngine->getName()
+    std::string engineName = (m_session.engine() != nullptr)
+        ? m_session.engine()->getName()
         : "Broken Engine";
 
     GetDiscordManager()->SetStatus(passMe, engineName, s_buildVersion);
@@ -235,26 +256,14 @@ void EngineSimApplication::process(float frame_dt) {
         m_displayAngle = 0.0f;
     }
 
-    m_simulator->setSimulationSpeed(speed);
-
     const double avgFramerate = clamp(m_engine.GetAverageFramerate(), 30.0f, 1000.0f);
-    m_simulator->startFrame(1 / avgFramerate);
-
-    auto proc_t0 = std::chrono::steady_clock::now();
-    const int iterationCount = m_simulator->getFrameIterationCount();
-    while (m_simulator->simulateStep()) {
+    const SimulationSession::StepResult stepResult = m_session.step(1 / avgFramerate, speed, [this]() {
         m_oscCluster->sample();
-        m_dynoSweep.sample(m_simulator, m_iceEngine);
-    }
+        m_session.dynoSweep().sample(m_session.simulator(), m_session.engine());
+    });
 
-    auto proc_t1 = std::chrono::steady_clock::now();
-
-    m_simulator->endFrame();
-
-    auto duration = proc_t1 - proc_t0;
-    if (iterationCount > 0) {
-        m_performanceCluster->addTimePerTimestepSample(
-            (duration.count() / 1E9) / iterationCount);
+    if (stepResult.iterations > 0) {
+        m_performanceCluster->addTimePerTimestepSample(stepResult.seconds / stepResult.iterations);
     }
 
     const SampleOffset safeWritePosition = m_audioSource->GetCurrentWritePosition();
@@ -278,7 +287,7 @@ void EngineSimApplication::process(float frame_dt) {
     }
 
     int16_t *samples = new int16_t[maxWrite];
-    const int readSamples = m_simulator->readAudioOutput(maxWrite, samples);
+    const int readSamples = m_session.simulator()->readAudioOutput(maxWrite, samples);
 
     for (SampleOffset i = 0; i < (SampleOffset)readSamples && i < maxWrite; ++i) {
         const int16_t sample = samples[i];
@@ -313,7 +322,7 @@ void EngineSimApplication::process(float frame_dt) {
     }
 
     m_performanceCluster->addInputBufferUsageSample(
-        (double)m_simulator->getSynthesizerInputLatency() / m_simulator->getSynthesizerInputLatencyTarget());
+        (double)m_session.simulator()->getSynthesizerInputLatency() / m_session.simulator()->getSynthesizerInputLatencyTarget());
     m_performanceCluster->addAudioLatencySample(
         m_audioBuffer.offsetDelta(m_audioSource->GetCurrentWritePosition(), m_audioBuffer.m_writePointer) / (44100 * 0.1));
 }
@@ -361,30 +370,14 @@ void EngineSimApplication::run() {
         }
 
         if (m_engine.ProcessKeyDown(ysKey::Code::Return)) {
-            reloadScript();
+            m_session.reloadScript();
         }
 
         if (m_engine.ProcessKeyDown(ysKey::Code::F5)) {
-            toggleLiveReload();
+            m_session.toggleLive();
         }
 
-        updateLiveReload(m_engine.GetFrameLength());
-
-        if (m_iceEngine != nullptr && m_infoCluster != nullptr && m_iceEngine->hasHighLift()) {
-            const bool high = m_iceEngine->isHighLiftActive();
-            if (high != m_lastHighLift) {
-                m_lastHighLift = high;
-                m_infoCluster->setLogMessage(
-                    std::string(high ? "CAM: HIGH LIFT @ " : "CAM: LOW LIFT @ ")
-                    + std::to_string((int)units::toRpm(std::fabs(m_iceEngine->getSpeed()))) + " rpm");
-            }
-        }
-
-        if (m_liveReload) {
-            m_liveServer.poll([this](const std::string &method, const std::string &path, const std::string &body) {
-                return handleLiveRoute(method, path, body);
-            });
-        }
+        m_session.updateLive(m_engine.GetFrameLength());
 
         if (m_engine.ProcessKeyDown(ysKey::Code::Tab)) {
             m_screen++;
@@ -409,7 +402,7 @@ void EngineSimApplication::run() {
         updateScreenSizeStability();
 
         processEngineInput();
-        m_dynoSweep.update(m_engine.GetFrameLength(), m_iceEngine, m_simulator);
+        m_session.updateDyno(m_engine.GetFrameLength());
 
         if (m_engine.ProcessKeyDown(ysKey::Code::Insert) &&
             m_engine.GetGameWindow()->IsActive()) {
@@ -444,7 +437,6 @@ void EngineSimApplication::run() {
         stopRecording();
     }
 
-    m_simulator->endAudioRenderingThread();
 }
 
 void EngineSimApplication::destroy() {
@@ -456,85 +448,8 @@ void EngineSimApplication::destroy() {
     m_assetManager.Destroy();
     m_engine.Destroy();
 
-    m_simulator->destroy();
+    m_session.shutdown();
     m_audioBuffer.destroy();
-}
-
-void EngineSimApplication::loadEngine(
-    Engine *engine,
-    Vehicle *vehicle,
-    Transmission *transmission)
-{
-    m_dynoSweep.abort("engine reloaded", nullptr, nullptr);
-
-    destroyObjects();
-
-    if (m_simulator != nullptr) {
-        m_simulator->releaseSimulation();
-        delete m_simulator;
-    }
-
-    if (m_vehicle != nullptr) {
-        delete m_vehicle;
-        m_vehicle = nullptr;
-    }
-
-    if (m_transmission != nullptr) {
-        delete m_transmission;
-        m_transmission = nullptr;
-    }
-
-    if (m_iceEngine != nullptr) {
-        m_iceEngine->destroy();
-        delete m_iceEngine;
-    }
-
-    m_iceEngine = engine;
-    m_vehicle = vehicle;
-    m_transmission = transmission;
-
-    m_simulator = engine->createSimulator(vehicle, transmission);
-
-    if (engine == nullptr || vehicle == nullptr || transmission == nullptr) {
-        m_iceEngine = nullptr;
-        m_viewParameters.Layer1 = 0;
-
-        return;
-    }
-
-    createObjects(engine);
-
-    m_viewParameters.Layer1 = engine->getMaxDepth();
-    engine->calculateDisplacement();
-
-    m_simulator->setSimulationFrequency(engine->getSimulationFrequency());
-
-    Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
-    audioParams.inputSampleNoise = static_cast<float>(engine->getInitialJitter());
-    audioParams.airNoise = static_cast<float>(engine->getInitialNoise());
-    audioParams.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
-    m_simulator->synthesizer().setAudioParameters(audioParams);
-
-    for (int i = 0; i < engine->getExhaustSystemCount(); ++i) {
-        ImpulseResponse *response = engine->getExhaustSystem(i)->getImpulseResponse();
-
-        ysWindowsAudioWaveFile waveFile;
-        waveFile.OpenFile(response->getFilename().c_str());
-        waveFile.InitializeInternalBuffer(waveFile.GetSampleCount());
-        waveFile.FillBuffer(0);
-        waveFile.CloseFile();
-
-        m_simulator->synthesizer().initializeImpulseResponse(
-            reinterpret_cast<const int16_t *>(waveFile.GetBuffer()),
-            waveFile.GetSampleCount(),
-            response->getVolume(),
-            i
-        );
-
-        waveFile.DestroyInternalBuffer();
-    }
-
-    m_simulator->startAudioRenderingThread();
 }
 
 void EngineSimApplication::drawGenerated(
@@ -602,7 +517,7 @@ void EngineSimApplication::createObjects(Engine *engine) {
 
         CombustionChamberObject *ccObject = new CombustionChamberObject;
         ccObject->initialize(this);
-        ccObject->m_chamber = m_iceEngine->getChamber(i);
+        ccObject->m_chamber = m_session.engine()->getChamber(i);
         m_objects.push_back(ccObject);
     }
 
@@ -643,504 +558,8 @@ const SimulationObject::ViewParameters &
     return m_viewParameters;
 }
 
-// ENGINE_SIM_LIVE_ENTRY / ENGINE_SIM_LIVE_FILE let a second instance (e.g. for tests) use its own files
-static std::string liveEntryScript() {
-    const char *value = std::getenv("ENGINE_SIM_LIVE_ENTRY");
-    return (value != nullptr && value[0] != 0) ? value : "../assets/live_entry.mr";
-}
-
-static std::string liveEngineFile() {
-    const char *value = std::getenv("ENGINE_SIM_LIVE_FILE");
-    return (value != nullptr && value[0] != 0) ? value : "../assets/engines/custom/live_engine.mr";
-}
-static constexpr int LiveServerPort = 8765;
-
-// Header lines written by tools/engine-builder.html:
-//   // builder:structure <hash>         hash of everything that needs a full reload
-//   // builder:live <key> <values...>   values that can be changed while the engine runs
-struct LiveHeader {
-    std::string structure;
-    std::map<std::string, std::string> values;
-};
-
-static LiveHeader readLiveHeader(const char *path) {
-    LiveHeader header;
-    std::ifstream file(path);
-    std::string line;
-    for (int i = 0; i < 40 && std::getline(file, line); ++i) {
-        if (!line.empty() && line.back() == '\r') line.pop_back();
-
-        const std::string structureTag = "// builder:structure ";
-        const std::string liveTag = "// builder:live ";
-        if (line.compare(0, structureTag.size(), structureTag) == 0) {
-            header.structure = line.substr(structureTag.size());
-        }
-        else if (line.compare(0, liveTag.size(), liveTag) == 0) {
-            const std::string rest = line.substr(liveTag.size());
-            const size_t space = rest.find(' ');
-            if (space != std::string::npos) {
-                header.values[rest.substr(0, space)] = rest.substr(space + 1);
-            }
-        }
-    }
-
-    return header;
-}
-
-bool EngineSimApplication::loadScript(const std::string &path, bool keepOnFailure) {
-    Engine *engine = nullptr;
-    Vehicle *vehicle = nullptr;
-    Transmission *transmission = nullptr;
-
-#ifdef ATG_ENGINE_SIM_PIRANHA_ENABLED
-    es_script::Compiler compiler;
-    compiler.initialize();
-    const bool compiled = compiler.compile(path);
-    if (compiled) {
-        const es_script::Compiler::Output output = compiler.execute();
-
-        if (keepOnFailure && output.engine == nullptr) {
-            // Script compiled but did not produce an engine: keep the running one
-            compiler.destroy();
-            return false;
-        }
-
-        configure(output.applicationSettings);
-
-        engine = output.engine;
-        vehicle = output.vehicle;
-        transmission = output.transmission;
-    }
-    else {
-        engine = nullptr;
-        vehicle = nullptr;
-        transmission = nullptr;
-
-        if (keepOnFailure) {
-            // Syntax errors are listed in error_log.log, the running engine stays untouched
-            compiler.destroy();
-            return false;
-        }
-    }
-
-    compiler.destroy();
-#endif /* ATG_ENGINE_SIM_PIRANHA_ENABLED */
-
-    if (vehicle == nullptr) {
-        Vehicle::Parameters vehParams;
-        vehParams.mass = units::mass(1597, units::kg);
-        vehParams.diffRatio = 3.42;
-        vehParams.tireRadius = units::distance(10, units::inch);
-        vehParams.dragCoefficient = 0.25;
-        vehParams.crossSectionArea = units::distance(6.0, units::foot) * units::distance(6.0, units::foot);
-        vehParams.rollingResistance = 2000.0;
-        vehicle = new Vehicle;
-        vehicle->initialize(vehParams);
-    }
-
-    if (transmission == nullptr) {
-        const double gearRatios[] = { 2.97, 2.07, 1.43, 1.00, 0.84, 0.56 };
-        Transmission::Parameters tParams;
-        tParams.GearCount = 6;
-        tParams.GearRatios = gearRatios;
-        tParams.MaxClutchTorque = units::torque(1000.0, units::ft_lb);
-        transmission = new Transmission;
-        transmission->initialize(tParams);
-    }
-
-    loadEngine(engine, vehicle, transmission);
-    refreshUserInterface();
-
-    return true;
-}
-
-bool EngineSimApplication::reloadScript() {
-    m_audioSource->SetMode(ysAudioSource::Mode::Stop);
-
-    const bool ok = m_liveReload
-        ? loadScript(liveEntryScript(), true)
-        : loadScript();
-
-    if (m_liveReload && ok) {
-        m_liveStructure = readLiveHeader(liveEngineFile().c_str()).structure;
-        m_lastCamLow.clear();
-        m_lastCamHigh.clear();
-        m_lastHighLift = false;
-
-        // A fresh engine only knows what the script says: add the live values (e.g. the ignition map)
-        if (m_iceEngine != nullptr) applyLiveTuning(liveEngineFile());
-    }
-
-    if (m_simulator->getEngine() != nullptr) {
-        m_audioSource->SetMode(ysAudioSource::Mode::Loop);
-    }
-
-    if (m_liveReload && m_infoCluster != nullptr) {
-        m_infoCluster->setLogMessage(ok
-            ? "Live reload: engine loaded"
-            : "Live reload failed - see error_log.log (previous engine kept)");
-    }
-
-    return ok;
-}
-
-void EngineSimApplication::toggleLiveReload() {
-    m_liveReload = !m_liveReload;
-    m_liveStructure.clear();
-    m_livePending = false;
-    m_livePollTimer = 0.0f;
-
-    std::error_code ec;
-    m_liveStamp = std::filesystem::last_write_time(liveEngineFile().c_str(), ec);
-
-    const bool ok = reloadScript();
-
-    bool listening = false;
-    if (m_liveReload) {
-        // ENGINE_SIM_LIVE_PORT lets a second instance (e.g. for tests) use another port
-        const char *portOverride = std::getenv("ENGINE_SIM_LIVE_PORT");
-        const int port = (portOverride != nullptr && std::atoi(portOverride) > 0)
-            ? std::atoi(portOverride)
-            : LiveServerPort;
-        listening = m_liveServer.start(port);
-    }
-    else {
-        m_liveServer.stop();
-    }
-
-    if (m_infoCluster != nullptr && (ok || !m_liveReload)) {
-        m_infoCluster->setLogMessage(m_liveReload
-            ? (listening
-                ? "Live reload ON - engine builder can connect (port " + std::to_string(m_liveServer.getPort()) + ")"
-                : "Live reload ON - file watch only (live port busy)")
-            : "Live reload OFF");
-    }
-}
-
-void EngineSimApplication::updateLiveReload(float dt) {
-    if (!m_liveReload) return;
-
-    m_livePollTimer += dt;
-    if (m_livePollTimer < 0.25f) return;
-    m_livePollTimer = 0.0f;
-
-    std::error_code ec;
-    const auto stamp = std::filesystem::last_write_time(liveEngineFile().c_str(), ec);
-    if (ec) return;
-
-    if (stamp != m_liveStamp) {
-        // Wait for one more poll so a half-written file is not picked up
-        m_liveStamp = stamp;
-        m_livePending = true;
-    }
-    else if (m_livePending) {
-        m_livePending = false;
-
-        // Only values marked "live" changed -> patch the running engine, no restart
-        const LiveHeader header = readLiveHeader(liveEngineFile().c_str());
-        if (!header.structure.empty()
-            && header.structure == m_liveStructure
-            && m_iceEngine != nullptr)
-        {
-            applyLiveTuning(liveEngineFile().c_str());
-        }
-        else {
-            reloadScript();
-        }
-    }
-}
-
-std::string EngineSimApplication::applyLiveTuning(const std::string &path) {
-    const LiveHeader header = readLiveHeader(path.c_str());
-    std::string applied;
-
-    auto number = [&](const char *key, double *out) {
-        const auto it = header.values.find(key);
-        if (it == header.values.end()) return false;
-        char *end = nullptr;
-        *out = std::strtod(it->second.c_str(), &end);
-        return end != it->second.c_str();
-    };
-
-    double v = 0;
-
-    if (number("idle_throttle_plate_position", &v)) {
-        for (int i = 0; i < m_iceEngine->getIntakeCount(); ++i) {
-            m_iceEngine->getIntake(i)->setIdleThrottlePlatePosition(v);
-        }
-        applied += " idle_throttle=" + std::to_string(v).substr(0, 6);
-    }
-
-    if (number("rev_limit_rpm", &v)) {
-        m_iceEngine->getIgnitionModule()->setRevLimit(units::rpm(v));
-        applied += " rev_limit=" + std::to_string((int)v);
-    }
-
-    if (number("starter_torque_nm", &v)) {
-        m_simulator->m_starterMotor.m_maxTorque = units::torque(v, units::Nm);
-        applied += " starter=" + std::to_string((int)v) + "Nm";
-    }
-
-    if (number("friction_torque_nm", &v)) {
-        PistonEngineSimulator *piston = dynamic_cast<PistonEngineSimulator *>(m_simulator);
-        if (piston != nullptr) {
-            for (int i = 0; i < m_iceEngine->getCrankshaftCount(); ++i) {
-                m_iceEngine->getCrankshaft(i)->setFrictionTorque(units::torque(v, units::Nm));
-                piston->setCrankshaftFrictionTorque(i, units::torque(v, units::Nm));
-            }
-            applied += " friction=" + std::to_string(v).substr(0, 5) + "Nm";
-        }
-    }
-
-    // Cam profiles. cam_low / cam_high: intake lift [mm], intake duration [deg at 0.050 in], exhaust lift [mm],
-    // exhaust duration [deg]; cam_switch: speed [rpm], hysteresis [rpm], minimum throttle [%], minimum manifold pressure [kPa]
-    {
-        const auto low = header.values.find("cam_low");
-        const auto high = header.values.find("cam_high");
-        const std::string lowText = low != header.values.end() ? low->second : "";
-        const std::string highText = high != header.values.end() ? high->second : "";
-
-        if (lowText != m_lastCamLow || highText != m_lastCamHigh) {
-            auto parse = [](const std::string &text) {
-                std::vector<double> values;
-                std::stringstream ss(text);
-                double value;
-                while (ss >> value) values.push_back(value);
-                return values;
-            };
-            auto make = [](double liftMm, double durationDeg) {
-                return generateHarmonicCamLobe(durationDeg * units::deg, 1.0, units::distance(liftMm, units::mm), 100);
-            };
-
-            const std::vector<double> l = parse(lowText), h = parse(highText);
-            Function *il = nullptr, *el = nullptr, *ih = nullptr, *eh = nullptr;
-            if (l.size() == 4) { il = make(l[0], l[1]); el = make(l[2], l[3]); }
-            if (h.size() == 4) { ih = make(h[0], h[1]); eh = make(h[2], h[3]); }
-
-            const bool valid = (l.size() != 4 || (il && el)) && (h.size() != 4 || (ih && eh));
-            std::vector<Function *> created;
-            for (Function *f : { il, el, ih, eh }) if (f != nullptr) created.push_back(f);
-
-            if (valid && !created.empty()) {
-                for (int i = 0; i < m_iceEngine->getCylinderBankCount(); ++i) {
-                    m_iceEngine->getHead(i)->getValvetrain()->setLobeProfiles(il, el, ih, eh);
-                }
-
-                m_liveLobes.push_back(created);
-                while (m_liveLobes.size() > 3) {                    // the engine view picks up the new profiles at once
-                    for (Function *f : m_liveLobes.front()) { f->destroy(); delete f; }
-                    m_liveLobes.pop_front();
-                }
-
-                applied += " cam_lobes";
-            }
-            else {
-                for (Function *f : created) { f->destroy(); delete f; }
-                if (!created.empty() || l.size() == 4 || h.size() == 4) applied += " cam_lobes_INVALID";
-            }
-
-            m_lastCamLow = lowText;
-            m_lastCamHigh = highText;
-        }
-
-        const auto sw = header.values.find("cam_switch");
-        if (sw != header.values.end()) {
-            std::stringstream ss(sw->second);
-            double rpm = 0, hysteresis = 0, throttle = 0, manifold = 0;
-            if (ss >> rpm >> hysteresis >> throttle >> manifold) {
-                for (int i = 0; i < m_iceEngine->getCylinderBankCount(); ++i) {
-                    m_iceEngine->getHead(i)->getValvetrain()->setSwitching(
-                        units::rpm(rpm), units::rpm(hysteresis), throttle / 100.0, manifold * 1000.0);
-                }
-                applied += " cam_switch=" + std::to_string((int)rpm);
-            }
-        }
-    }
-
-    if (number("fuel_octane", &v)) {
-        m_iceEngine->getFuel()->setOctane(v);
-        applied += " octane=" + std::to_string((int)v);
-    }
-
-    if (number("knock_damage", &v)) {
-        m_iceEngine->setKnockDamageEnabled(v > 0.5);
-        applied += v > 0.5 ? " knock_damage=on" : " knock_damage=off";
-    }
-
-    if (number("engine_repair", &v)) {
-        // every click on "repair" in the builder raises the counter
-        const int counter = (int)v;
-        if (m_lastRepairCounter >= 0 && counter > m_lastRepairCounter) {
-            m_iceEngine->repairKnockDamage();
-            applied += " repaired";
-        }
-
-        m_lastRepairCounter = counter;
-    }
-
-    const auto curve = header.values.find("timing_curve");
-    if (curve != header.values.end()) {
-        // format: "<rpm>:<deg> <rpm>:<deg> ..."
-        std::vector<std::pair<double, double>> samples;
-        std::stringstream ss(curve->second);
-        std::string token;
-        while (ss >> token) {
-            const size_t colon = token.find(':');
-            if (colon == std::string::npos) continue;
-            samples.push_back({
-                std::atof(token.substr(0, colon).c_str()),
-                std::atof(token.substr(colon + 1).c_str()) });
-        }
-
-        if (!samples.empty()) {
-            Function *next = new Function;
-            next->initialize((int)samples.size(), units::rpm(1000.0)); // same filter radius as the generated script
-            for (const auto &sample : samples) {
-                next->addSample(units::rpm(sample.first), sample.second * units::deg);
-            }
-
-            Function *previous = m_iceEngine->getIgnitionModule()->getTimingCurve();
-            m_iceEngine->getIgnitionModule()->setTimingCurve(next);
-
-            if (m_liveTimingCurve != nullptr && previous == m_liveTimingCurve) {
-                m_liveTimingCurve->destroy();
-                delete m_liveTimingCurve;
-            }
-
-            m_liveTimingCurve = next;
-            applied += " timing_curve";
-        }
-    }
-
-    // Ignition map (advance over speed and manifold pressure): replaces the curve while it is present
-    auto numbers = [&](const char *key, double scale) {
-        std::vector<double> out;
-        const auto it = header.values.find(key);
-        if (it == header.values.end()) return out;
-
-        std::stringstream ss(it->second);
-        double value;
-        while (ss >> value) out.push_back(value * scale);
-        return out;
-    };
-
-    const std::vector<double> mapSpeeds = numbers("map_rpm", 1.0);                 // rpm
-    const std::vector<double> mapLoads = numbers("map_load", 1000.0);              // kPa -> Pa
-    const std::vector<double> mapAdvance = numbers("map_adv", units::deg);         // deg -> rad
-    IgnitionModule *ignition = m_iceEngine->getIgnitionModule();
-    if (!mapSpeeds.empty() && !mapLoads.empty() && mapAdvance.size() == mapSpeeds.size() * mapLoads.size()) {
-        ignition->setTimingMap(mapSpeeds, mapLoads, mapAdvance);
-        applied += ignition->hasTimingMap() ? " ignition_map" : " ignition_map_INVALID";
-    }
-    else if (ignition->hasTimingMap()) {
-        ignition->clearTimingMap();
-        applied += " ignition_map_off";
-    }
-
-    if (m_infoCluster != nullptr) {
-        m_infoCluster->setLogMessage("Live (no restart):" + applied);
-    }
-
-    return applied;
-}
-
-static std::string jsonEscape(const std::string &in) {
-    std::string out;
-    for (const char c : in) {
-        switch (c) {
-            case '"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': break;
-            case '\t': out += "\\t"; break;
-            default: out += ((unsigned char)c < 0x20) ? ' ' : c;
-        }
-    }
-    return out;
-}
-
-// Called on the main thread for every engine pushed by the engine builder
-std::string EngineSimApplication::handleLiveRequest(const std::string &body) {
-    {
-        std::ofstream file(liveEngineFile().c_str(), std::ios::binary | std::ios::trunc);
-        file.write(body.data(), (std::streamsize)body.size());
-        if (!file.good()) {
-            return "{\"ok\":false,\"error\":\"could not write assets/engines/custom/live_engine.mr\"}";
-        }
-    }
-
-    std::string result;
-    const LiveHeader header = readLiveHeader(liveEngineFile().c_str());
-
-    if (!header.structure.empty() && header.structure == m_liveStructure && m_iceEngine != nullptr) {
-        const std::string applied = applyLiveTuning(liveEngineFile().c_str());
-        result = "{\"ok\":true,\"mode\":\"live\",\"message\":\"" + jsonEscape(applied) + "\"}";
-    }
-    else {
-        const bool ok = reloadScript();
-        if (ok) {
-            result = "{\"ok\":true,\"mode\":\"reload\",\"message\":\"engine reloaded\"}";
-        }
-        else {
-            std::ifstream log("error_log.log");
-            std::string text((std::istreambuf_iterator<char>(log)), std::istreambuf_iterator<char>());
-            if (text.size() > 3000) text.resize(3000);
-            if (text.empty()) text = "script compiled but did not produce an engine";
-            result = "{\"ok\":false,\"mode\":\"reload\",\"error\":\"" + jsonEscape(text) + "\"}";
-        }
-    }
-
-    // The file was written by us: do not let the file watcher process it a second time
-    std::error_code ec;
-    const auto stamp = std::filesystem::last_write_time(liveEngineFile().c_str(), ec);
-    if (!ec) m_liveStamp = stamp;
-    m_livePending = false;
-
-    return result;
-}
-
-// All requests of the engine builder, executed on the main thread
-std::string EngineSimApplication::handleLiveRoute(
-    const std::string &method,
-    const std::string &path,
-    const std::string &body)
-{
-    if (method == "POST" && path == "/engine") {
-        return handleLiveRequest(body);
-    }
-
-    if (method == "GET" && path == "/dyno") {
-        return m_dynoSweep.statusJson();
-    }
-
-    if (method == "POST" && path == "/dyno/stop") {
-        m_dynoSweep.abort("stopped by user", m_iceEngine, m_simulator);
-        return "{\"ok\":true}";
-    }
-
-    if (method == "POST" && path == "/dyno") {
-        DynoSweep::Parameters params;
-        std::string error;
-        if (!DynoSweep::parseParameters(body, &params)) {
-            return "{\"ok\":false,\"error\":\"invalid dyno parameters\"}";
-        }
-
-        if (!m_dynoSweep.start(params, m_iceEngine, m_simulator, &error)) {
-            return "{\"ok\":false,\"error\":\"" + jsonEscape(error) + "\"}";
-        }
-
-        if (m_infoCluster != nullptr) {
-            m_infoCluster->setLogMessage("Dyno run started from the engine builder");
-        }
-
-        return "{\"ok\":true}";
-    }
-
-    return "{\"ok\":false,\"error\":\"unknown route\"}";
-}
-
 void EngineSimApplication::processEngineInput() {
-    if (m_iceEngine == nullptr) {
+    if (m_session.engine() == nullptr) {
         return;
     }
 
@@ -1157,10 +576,10 @@ void EngineSimApplication::processEngineInput() {
             ? 0.001
             : 0.01;
 
-        Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+        Synthesizer::AudioParameters audioParams = m_session.simulator()->synthesizer().getAudioParameters();
         audioParams.volume = clamp(audioParams.volume + mouseWheelDelta * rate * dt);
 
-        m_simulator->synthesizer().setAudioParameters(audioParams);
+        m_session.simulator()->synthesizer().setAudioParameters(audioParams);
         fineControlInUse = true;
 
         m_infoCluster->setLogMessage("[Z] - Set volume to " + std::to_string(audioParams.volume));
@@ -1170,10 +589,10 @@ void EngineSimApplication::processEngineInput() {
             ? 0.001
             : 0.01;
 
-        Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+        Synthesizer::AudioParameters audioParams = m_session.simulator()->synthesizer().getAudioParameters();
         audioParams.convolution = clamp(audioParams.convolution + mouseWheelDelta * rate * dt);
 
-        m_simulator->synthesizer().setAudioParameters(audioParams);
+        m_session.simulator()->synthesizer().setAudioParameters(audioParams);
         fineControlInUse = true;
 
         m_infoCluster->setLogMessage("[X] - Set convolution level to " + std::to_string(audioParams.convolution));
@@ -1183,10 +602,10 @@ void EngineSimApplication::processEngineInput() {
             ? 0.00001
             : 0.001;
 
-        Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+        Synthesizer::AudioParameters audioParams = m_session.simulator()->synthesizer().getAudioParameters();
         audioParams.dF_F_mix = clamp(audioParams.dF_F_mix + mouseWheelDelta * rate * dt);
 
-        m_simulator->synthesizer().setAudioParameters(audioParams);
+        m_session.simulator()->synthesizer().setAudioParameters(audioParams);
         fineControlInUse = true;
 
         m_infoCluster->setLogMessage("[C] - Set high freq. gain to " + std::to_string(audioParams.dF_F_mix));
@@ -1196,10 +615,10 @@ void EngineSimApplication::processEngineInput() {
             ? 0.001
             : 0.01;
 
-        Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+        Synthesizer::AudioParameters audioParams = m_session.simulator()->synthesizer().getAudioParameters();
         audioParams.airNoise = clamp(audioParams.airNoise + mouseWheelDelta * rate * dt);
 
-        m_simulator->synthesizer().setAudioParameters(audioParams);
+        m_session.simulator()->synthesizer().setAudioParameters(audioParams);
         fineControlInUse = true;
 
         m_infoCluster->setLogMessage("[V] - Set low freq. noise to " + std::to_string(audioParams.airNoise));
@@ -1209,10 +628,10 @@ void EngineSimApplication::processEngineInput() {
             ? 0.001
             : 0.01;
 
-        Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
+        Synthesizer::AudioParameters audioParams = m_session.simulator()->synthesizer().getAudioParameters();
         audioParams.inputSampleNoise = clamp(audioParams.inputSampleNoise + mouseWheelDelta * rate * dt);
 
-        m_simulator->synthesizer().setAudioParameters(audioParams);
+        m_session.simulator()->synthesizer().setAudioParameters(audioParams);
         fineControlInUse = true;
 
         m_infoCluster->setLogMessage("[B] - Set high freq. noise to " + std::to_string(audioParams.inputSampleNoise));
@@ -1223,23 +642,23 @@ void EngineSimApplication::processEngineInput() {
             : 100.0;
 
         const double newSimulationFrequency = clamp(
-            m_simulator->getSimulationFrequency() + mouseWheelDelta * rate * dt,
+            m_session.simulator()->getSimulationFrequency() + mouseWheelDelta * rate * dt,
             400.0, 400000.0);
 
-        m_simulator->setSimulationFrequency(newSimulationFrequency);
+        m_session.simulator()->setSimulationFrequency(newSimulationFrequency);
         fineControlInUse = true;
 
-        m_infoCluster->setLogMessage("[N] - Set simulation freq to " + std::to_string(m_simulator->getSimulationFrequency()));
+        m_infoCluster->setLogMessage("[N] - Set simulation freq to " + std::to_string(m_session.simulator()->getSimulationFrequency()));
     }
-    else if (m_engine.IsKeyDown(ysKey::Code::G) && m_simulator->m_dyno.m_hold) {
+    else if (m_engine.IsKeyDown(ysKey::Code::G) && m_session.simulator()->m_dyno.m_hold) {
         if (mouseWheelDelta > 0) {
-            m_dynoSpeed += m_iceEngine->getDynoHoldStep();
+            m_dynoSpeed += m_session.engine()->getDynoHoldStep();
         }
         else if (mouseWheelDelta < 0) {
-            m_dynoSpeed -= m_iceEngine->getDynoHoldStep();
+            m_dynoSpeed -= m_session.engine()->getDynoHoldStep();
         }
 
-        m_dynoSpeed = clamp(m_dynoSpeed, m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
+        m_dynoSpeed = clamp(m_dynoSpeed, m_session.engine()->getDynoMinSpeed(), m_session.engine()->getDynoMaxSpeed());
 
         m_infoCluster->setLogMessage("[G] - Set dyno speed to " + std::to_string(units::toRpm(m_dynoSpeed)));
         fineControlInUse = true;
@@ -1269,10 +688,10 @@ void EngineSimApplication::processEngineInput() {
 
     m_speedSetting = m_targetSpeedSetting * 0.5 + 0.5 * m_speedSetting;
 
-    m_iceEngine->setSpeedControl(m_speedSetting);
+    m_session.engine()->setSpeedControl(m_speedSetting);
     if (m_engine.ProcessKeyDown(ysKey::Code::M)) {
         const int currentLayer = getViewParameters().Layer0;
-        if (currentLayer + 1 < m_iceEngine->getMaxDepth()) {
+        if (currentLayer + 1 < m_session.engine()->getMaxDepth()) {
             setViewLayer(currentLayer + 1);
         }
 
@@ -1287,84 +706,84 @@ void EngineSimApplication::processEngineInput() {
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::D)) {
-        m_simulator->m_dyno.m_enabled = !m_simulator->m_dyno.m_enabled;
+        m_session.simulator()->m_dyno.m_enabled = !m_session.simulator()->m_dyno.m_enabled;
 
-        const std::string msg = m_simulator->m_dyno.m_enabled
+        const std::string msg = m_session.simulator()->m_dyno.m_enabled
             ? "DYNOMOMETER ENABLED"
             : "DYNOMOMETER DISABLED";
         m_infoCluster->setLogMessage(msg);
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::H)) {
-        m_simulator->m_dyno.m_hold = !m_simulator->m_dyno.m_hold;
+        m_session.simulator()->m_dyno.m_hold = !m_session.simulator()->m_dyno.m_hold;
 
-        const std::string msg = m_simulator->m_dyno.m_hold
-            ? m_simulator->m_dyno.m_enabled ? "HOLD ENABLED" : "HOLD ON STANDBY [ENABLE DYNO. FOR HOLD]"
+        const std::string msg = m_session.simulator()->m_dyno.m_hold
+            ? m_session.simulator()->m_dyno.m_enabled ? "HOLD ENABLED" : "HOLD ON STANDBY [ENABLE DYNO. FOR HOLD]"
             : "HOLD DISABLED";
         m_infoCluster->setLogMessage(msg);
     }
 
-    if (m_simulator->m_dyno.m_enabled) {
-        if (!m_simulator->m_dyno.m_hold) {
-            if (m_simulator->getFilteredDynoTorque() > units::torque(1.0, units::ft_lb)) {
+    if (m_session.simulator()->m_dyno.m_enabled) {
+        if (!m_session.simulator()->m_dyno.m_hold) {
+            if (m_session.simulator()->getFilteredDynoTorque() > units::torque(1.0, units::ft_lb)) {
                 m_dynoSpeed += units::rpm(500) * dt;
             }
             else {
                 m_dynoSpeed *= (1 / (1 + dt));
             }
 
-            if (m_dynoSpeed > m_iceEngine->getRedline()) {
-                m_simulator->m_dyno.m_enabled = false;
+            if (m_dynoSpeed > m_session.engine()->getRedline()) {
+                m_session.simulator()->m_dyno.m_enabled = false;
                 m_dynoSpeed = units::rpm(0);
             }
         }
     }
     else {
-        if (!m_simulator->m_dyno.m_hold) {
+        if (!m_session.simulator()->m_dyno.m_hold) {
             m_dynoSpeed = units::rpm(0);
         }
     }
 
-    m_dynoSpeed = clamp(m_dynoSpeed, m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
-    m_simulator->m_dyno.m_rotationSpeed = m_dynoSpeed;
+    m_dynoSpeed = clamp(m_dynoSpeed, m_session.engine()->getDynoMinSpeed(), m_session.engine()->getDynoMaxSpeed());
+    m_session.simulator()->m_dyno.m_rotationSpeed = m_dynoSpeed;
 
-    const bool prevStarterEnabled = m_simulator->m_starterMotor.m_enabled;
+    const bool prevStarterEnabled = m_session.simulator()->m_starterMotor.m_enabled;
     if (m_engine.IsKeyDown(ysKey::Code::S)) {
-        m_simulator->m_starterMotor.m_enabled = true;
+        m_session.simulator()->m_starterMotor.m_enabled = true;
     }
     else {
-        m_simulator->m_starterMotor.m_enabled = false;
+        m_session.simulator()->m_starterMotor.m_enabled = false;
     }
 
-    if (prevStarterEnabled != m_simulator->m_starterMotor.m_enabled) {
-        const std::string msg = m_simulator->m_starterMotor.m_enabled
+    if (prevStarterEnabled != m_session.simulator()->m_starterMotor.m_enabled) {
+        const std::string msg = m_session.simulator()->m_starterMotor.m_enabled
             ? "STARTER ENABLED"
             : "STARTER DISABLED";
         m_infoCluster->setLogMessage(msg);
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::A)) {
-        m_simulator->getEngine()->getIgnitionModule()->m_enabled =
-            !m_simulator->getEngine()->getIgnitionModule()->m_enabled;
+        m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled =
+            !m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled;
 
-        const std::string msg = m_simulator->getEngine()->getIgnitionModule()->m_enabled
+        const std::string msg = m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled
             ? "IGNITION ENABLED"
             : "IGNITION DISABLED";
         m_infoCluster->setLogMessage(msg);
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::Up)) {
-        m_simulator->getTransmission()->changeGear(m_simulator->getTransmission()->getGear() + 1);
+        m_session.simulator()->getTransmission()->changeGear(m_session.simulator()->getTransmission()->getGear() + 1);
 
         m_infoCluster->setLogMessage(
-            "UPSHIFTED TO " + std::to_string(m_simulator->getTransmission()->getGear() + 1));
+            "UPSHIFTED TO " + std::to_string(m_session.simulator()->getTransmission()->getGear() + 1));
     }
     else if (m_engine.ProcessKeyDown(ysKey::Code::Down)) {
-        m_simulator->getTransmission()->changeGear(m_simulator->getTransmission()->getGear() - 1);
+        m_session.simulator()->getTransmission()->changeGear(m_session.simulator()->getTransmission()->getGear() - 1);
 
-        if (m_simulator->getTransmission()->getGear() != -1) {
+        if (m_session.simulator()->getTransmission()->getGear() != -1) {
             m_infoCluster->setLogMessage(
-                "DOWNSHIFTED TO " + std::to_string(m_simulator->getTransmission()->getGear() + 1));
+                "DOWNSHIFTED TO " + std::to_string(m_session.simulator()->getTransmission()->getGear() + 1));
         }
         else {
             m_infoCluster->setLogMessage("SHIFTED TO NEUTRAL");
@@ -1394,7 +813,7 @@ void EngineSimApplication::processEngineInput() {
 
     const double clutch_s = dt / (dt + clutchRC);
     m_clutchPressure = m_clutchPressure * (1 - clutch_s) + m_targetClutchPressure * clutch_s;
-    m_simulator->getTransmission()->setClutchPressure(m_clutchPressure);
+    m_session.simulator()->getTransmission()->setClutchPressure(m_clutchPressure);
 }
 
 void EngineSimApplication::renderScene() {
@@ -1538,17 +957,17 @@ void EngineSimApplication::refreshUserInterface() {
     m_mixerCluster = m_uiManager.getRoot()->addElement<MixerCluster>();
     m_infoCluster = m_uiManager.getRoot()->addElement<InfoCluster>();
 
-    m_infoCluster->setEngine(m_iceEngine);
-    m_rightGaugeCluster->m_simulator = m_simulator;
-    m_rightGaugeCluster->setEngine(m_iceEngine);
-    m_oscCluster->setSimulator(m_simulator);
-    if (m_iceEngine != nullptr) {
-        m_oscCluster->setDynoMaxRange(units::toRpm(m_iceEngine->getRedline()));
+    m_infoCluster->setEngine(m_session.engine());
+    m_rightGaugeCluster->m_simulator = m_session.simulator();
+    m_rightGaugeCluster->setEngine(m_session.engine());
+    m_oscCluster->setSimulator(m_session.simulator());
+    if (m_session.engine() != nullptr) {
+        m_oscCluster->setDynoMaxRange(units::toRpm(m_session.engine()->getRedline()));
     }
-    m_performanceCluster->setSimulator(m_simulator);
-    m_tuningCluster->setEngine(m_iceEngine);
-    m_loadSimulationCluster->setSimulator(m_simulator);
-    m_mixerCluster->setSimulator(m_simulator);
+    m_performanceCluster->setSimulator(m_session.simulator());
+    m_tuningCluster->setEngine(m_session.engine());
+    m_loadSimulationCluster->setSimulator(m_session.simulator());
+    m_mixerCluster->setSimulator(m_session.simulator());
 }
 
 void EngineSimApplication::startRecording() {

@@ -210,6 +210,7 @@ add_executable(engine-sim-app WIN32
     src/engine_sim_application.cpp
     src/live_server.cpp
     src/dyno_sweep.cpp
+    src/simulation_session.cpp
     src/geometry_generator.cpp
     src/simulation_object.cpp
     src/piston_object.cpp
@@ -248,6 +249,7 @@ add_executable(engine-sim-app WIN32
     include/engine_sim_application.h
     include/live_server.h
     include/dyno_sweep.h
+    include/simulation_session.h
     include/geometry_generator.h
     include/simulation_object.h
     include/piston_object.h
