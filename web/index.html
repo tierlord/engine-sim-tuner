@@ -13,6 +13,8 @@
   <div class="mode"><span id="m-build">Bauen</span><span id="m-tune" class="act">Tunen</span></div>
   <div class="chip" id="conn"><i></i><span>verbinde …</span></div>
   <div class="chip" id="engineName">kein Motor</div>
+  <div class="chip stale only-build" id="stale"><i></i><span>Noch kein Motor geladen</span></div>
+  <button class="primary only-build" id="b-load-top" title="Wie der Knopf rechts">Motor laden und tunen →</button>
   <div class="grow"></div>
   <div class="ctl only-tune">Gas <input id="gas" type="range" min="0" max="100" value="0" title="Gaspedal"> <b id="gasv" style="color:var(--text);width:38px">0 %</b></div>
   <button id="starter" class="only-tune" title="Gedrückt halten">Starter (halten)</button>
@@ -28,7 +30,7 @@
   <div class="tile"><label>Motorschaden</label><div class="v" id="t-dmg-box"><span id="t-dmg">–</span> <small>%</small></div></div>
   <div class="tile"><label>Nocken</label><div class="v" id="t-cam">–</div></div>
 </div>
-<div class="live only-build" id="build-bar"><div class="tile"><label>Bauen</label><div class="v" style="font-size:16px">Der Motor wird hier zusammengestellt</div></div></div>
+<div class="live only-build" id="build-bar"></div>
 
 <div class="body">
   <nav class="only-tune" id="nav-tune">
@@ -40,7 +42,15 @@
     <hr>
     <a data-v="dyno">Prüfstand &amp; Vergleich <small>folgt</small></a>
   </nav>
-  <nav class="only-build" id="nav-build"><a data-v="b-layout" class="act">Anordnung <small>folgt</small></a></nav>
+  <nav class="only-build" id="nav-build">
+    <a data-v="b-layout" class="act">Anordnung</a>
+    <a data-v="b-size">Hubraum &amp; Verdichtung</a>
+    <a data-v="b-crank">Kurbeltrieb</a>
+    <a data-v="b-air">Ansaugung &amp; Abgas</a>
+    <a data-v="b-valve">Ventiltrieb (Aufbau)</a>
+    <a data-v="b-fuel">Motor &amp; Kraftstoff</a>
+    <a data-v="b-car">Fahrzeug</a>
+  </nav>
 
   <main>
     <section id="v-ign" class="act">
@@ -68,13 +78,58 @@
     </section>
 
     <section id="v-soon"><h1 id="soon-title">–</h1><div class="card note" id="soon-text"></div></section>
-    <section id="v-b-layout"><h1>Anordnung</h1><div class="sub">Das Bauen zieht als Nächstes in diese Oberfläche um.</div>
-      <div class="card note">Bis dahin stellst du den Motor im bisherigen Builder zusammen (<code>tools/engine-builder.html</code>). Er spricht mit demselben Server und lädt den Motor hierher. Danach erscheinen die Werte in „Tunen“.</div></section>
+    <section id="v-b-layout" class="bsec">
+      <h1>Anordnung</h1>
+      <div class="sub">Wähle eine Grundform. Bänke und Kurbelzapfen lassen sich in der Grafik frei verschieben. Alles im Bauen lädt den Motor neu.</div>
+      <div class="card"><label class="bfield"><span>Vorlage laden<small>überschreibt alle Einstellungen</small></span><select id="preset"></select></label></div>
+      <div class="cols">
+        <div>
+          <div class="card"><h3><span>Stirnansicht</span><span>Zapfen ziehen · Shift = 5°-Raster</span></h3><div id="endwrap" style="display:flex;justify-content:center"></div></div>
+          <div class="card"><h3><span>Zündabstände</span><span class="ctl"><button id="play">▶</button><input type="range" id="alpha" min="0" max="719" value="0" step="1"><b id="alphaLabel" style="color:var(--text);width:40px">0°</b></span></h3><div id="tlwrap"></div><div id="info" class="note"></div></div>
+        </div>
+        <div>
+          <div class="card"><h3><span>Grundform</span></h3><div id="autoFields"></div>
+            <label class="chk"><input type="checkbox" id="singlePin"> Alle Pleuel auf einem Kurbelzapfen (V-Twin, Sternmotor)</label>
+            <div class="row"><button id="regen">Anordnung neu erzeugen</button><span class="note">überschreibt manuelle Änderungen</span></div></div>
+          <div class="card"><h3><span>Bänke</span></h3><div class="note">Winkel 0° = senkrecht nach oben, positiv = nach links.</div><div id="banksTbl"></div>
+            <label class="chk"><input type="checkbox" id="keep" checked> Zündabstände beim Verschieben einer Bank behalten</label></div>
+          <div class="card"><h3><span>Zylinder</span></h3><div class="note">Zapfen = Kurbelzapfen-Winkel. Umdr. = in welcher der beiden Kurbelumdrehungen der Zylinder zündet. Gleicher Zapfenwinkel = gleicher Zapfen.</div><div id="cylsTbl"></div></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-b-size" class="bsec"><h1>Hubraum &amp; Verdichtung</h1><div class="sub">Bohrung, Hub und Brennraumvolumen. Die Verdichtung ergibt sich daraus (oder umgekehrt).</div>
+      <div class="card" style="max-width:640px"><div id="f-hubraum"></div>
+        <label class="chk"><input type="checkbox" id="keepCR" checked> Verdichtung konstant halten, wenn Bohrung oder Hub geändert werden (Brennraum folgt)</label>
+        <div class="bfield"><span>Hubraum gesamt<small>Bohrung² · π/4 · Hub · Zylinderzahl</small></span><output id="dispTotal">–</output></div></div></section>
+    <section id="v-b-crank" class="bsec"><h1>Kurbeltrieb</h1><div class="sub">Massen von Kolben, Pleuel, Kurbelwelle und Schwungrad, dazu die Reibung.</div><div class="card" style="max-width:640px" id="f-massen"></div></section>
+    <section id="v-b-air" class="bsec"><h1>Ansaugung &amp; Abgas</h1><div class="sub">Geometrie, die man nicht im Betrieb ändert.</div><div class="card" style="max-width:640px" id="f-ansaugung"></div></section>
+    <section id="v-b-valve" class="bsec"><h1>Ventiltrieb (Aufbau)</h1>
+      <div class="sub">Startwerte der Nockenwelle und die Option eines zweiten Profils (VTEC). Hub, Dauer und Lage lassen sich später im Tunen im Betrieb verstellen.</div>
+      <div class="cols" style="grid-template-columns:1fr 1fr"><div class="card"><h3><span>Nockenwelle</span></h3><div id="f-nocken"></div></div><div class="card"><h3><span>Zweites Profil (VTEC)</span></h3><div id="f-vtec"></div></div></div></section>
+    <section id="v-b-fuel" class="bsec"><h1>Motor &amp; Kraftstoff</h1><div class="sub">Name, Kraftstoffsorte, Klopfmodell, Redline und Anlasser.</div>
+      <div class="cols" style="grid-template-columns:1fr 1fr"><div class="card"><h3><span>Allgemein</span></h3><div id="f-allgemein"></div><h3 style="margin-top:18px"><span>Drehzahl &amp; Anlasser</span></h3><div id="f-zuendung"></div></div>
+        <div class="card"><h3><span>Kraftstoff &amp; Klopfen</span></h3><div id="f-kraftstoff"></div></div></div></section>
+    <section id="v-b-car" class="bsec"><h1>Fahrzeug</h1><div class="sub">Masse, Luftwiderstand, Übersetzungen und Kupplung.</div><div class="card" style="max-width:640px" id="f-fahrzeug"></div></section>
+
+    <div id="hidden-fields" class="hidden"></div>
   </main>
 
-  <aside>
+  <aside class="only-tune">
     <div class="card" style="margin:0"><h3><span>Verbindung</span></h3><div class="kv" id="kv"></div></div>
     <div class="hint note">Motoransicht, Zündfolge und Abgasströmung folgen in dieser Spalte.</div>
+  </aside>
+  <aside class="only-build" id="build-aside">
+    <div class="card" style="margin:0"><h3><span>Zusammenfassung</span></h3><div class="kv" id="b-kv"></div></div>
+    <div class="card" style="margin:0"><h3><span>Prüfung</span></h3><div id="msgs"></div></div>
+    <button class="primary big" id="b-load">Motor laden und tunen →</button>
+    <div id="b-status" class="note"></div>
+    <div class="card" style="margin:0"><h3><span>Datei</span></h3>
+      <input type="text" id="b-file" value="my_engine" style="width:100%;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:6px 8px;margin-bottom:8px">
+      <div class="row"><button id="b-mr">.mr speichern</button><button id="b-jsave">Konfig speichern</button><button id="b-jload">Konfig laden</button></div>
+      <input type="file" id="b-jfile" accept=".json" class="hidden">
+    </div>
+    <div class="note">Bis du lädst, läuft der alte Motor weiter. Gespeicherte Prüfstandsläufe bleiben erhalten.</div>
   </aside>
 </div>
 

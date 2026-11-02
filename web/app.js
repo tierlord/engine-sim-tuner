@@ -3,19 +3,8 @@
 //   GET/POST /tune   values that change while the engine runs
 //   POST /control    driver input (gas, starter, ignition)
 
-const $ = id => document.getElementById(id);
-const nums = text => (text || '').trim().split(/\s+/).filter(Boolean).map(Number);
-
-const api = {
-    async get(path) { return (await fetch(path, { cache: 'no-store' })).json(); },
-    async post(path, body) {
-        const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body });
-        return r.json();
-    },
-};
-
-const timers = {};
-function soon(key, fn, delay = 120) { clearTimeout(timers[key]); timers[key] = setTimeout(fn, delay); }
+import { $, nums, api, soon } from './util.js';
+import { initBuild } from './build.js';
 
 /* ------------------------------------------------------------------ views */
 
@@ -27,9 +16,12 @@ const SOON = {
     dyno: ['Prüfstand & Vergleich', 'Messläufe mit Diagramm und Lauf-Vergleich ziehen als Nächstes um. Bis dahin: tools/engine-builder.html.'],
 };
 
+let buildView = 'b-layout';
+
 function show(view) {
     document.querySelectorAll('main section').forEach(s => s.classList.remove('act'));
-    if (view === 'ign' || view === 'b-layout') $('v-' + view).classList.add('act');
+    if (view.startsWith('b-')) buildView = view;
+    if (view === 'ign' || view.startsWith('b-')) $('v-' + view).classList.add('act');
     else {
         $('soon-title').textContent = SOON[view][0];
         $('soon-text').textContent = SOON[view][1];
@@ -42,7 +34,8 @@ function setMode(mode) {
     document.body.dataset.mode = mode;
     $('m-build').classList.toggle('act', mode === 'build');
     $('m-tune').classList.toggle('act', mode === 'tune');
-    show(mode === 'build' ? 'b-layout' : 'ign');
+    show(mode === 'build' ? buildView : 'ign');
+    if (mode === 'build' && build) build.updateStale();
 }
 
 $('m-build').onclick = () => setMode('build');
@@ -226,5 +219,12 @@ function placeDot(rpm, kpa) {
 
 /* ------------------------------------------------------------------ start */
 
+const build = initBuild({
+    hasEngine: () => !!(last && last.engine),
+    onLoaded: () => { setMode('tune'); loadTune(); },      // after loading: tuning, the engine stands still
+});
+
+// a first start without an engine opens the build view
 setMode('tune');
 connect();
+setTimeout(() => { if (!(last && last.engine)) setMode('build'); }, 1500);

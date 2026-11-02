@@ -83,3 +83,27 @@
 .opdot::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;background:#fff;border-radius:50%}
 .note{color:var(--dim);font-size:12px}
 .err{color:var(--red)}
+
+/* ----- Bauen ----- */
+.bfield { display: grid; grid-template-columns: 1fr 190px; gap: 4px 12px; align-items: center; margin: 10px 0; }
+.bfield > span small { display: block; color: var(--dim); font-size: 11px; }
+.bfield input[type=number], .bfield input[type=text], .bfield select, .bfield output {
+  width: 100%; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 5px 8px; font: inherit; }
+.bfield output { border: 0; background: transparent; padding: 0; text-align: right; font-weight: 600; }
+.bfield output small { display: block; color: var(--dim); font-weight: 400; }
+.sliderbox { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.sliderbox input[type=range] { width: 100%; }
+.chk { display: flex; align-items: center; gap: 8px; margin: 10px 0; color: var(--dim); }
+.row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+table input[type=number], table select { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 3px 6px; width: 84px; font: inherit; }
+table select { width: 76px; }
+tr.sel td { background: #1f2933; }
+button.x { padding: 2px 8px; }
+button:disabled { opacity: .45; cursor: default; }
+#msgs .err { color: var(--red); } #msgs .warn { color: var(--yellow); } #msgs .ok { color: var(--green); }
+.note.ok { color: var(--green); }
+.cols > div, .cols > .card { min-width: 0; }
+.bsec .cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+#endwrap svg { max-width: 100%; height: auto; }
+.bfield { grid-template-columns: minmax(0, 1fr) minmax(110px, 170px); }
+main { min-width: 0; }
