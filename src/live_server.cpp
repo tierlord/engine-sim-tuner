@@ -1,7 +1,17 @@
 #include "../include/live_server.h"
 
+#ifdef _WIN32
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#pragma comment(lib, "ws2_32.lib")
+#else
+#include <arpa/inet.h>
+#include <fcntl.h>
+#include <netinet/in.h>
+#include <sys/select.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 #include <algorithm>
 #include <cctype>
@@ -10,10 +20,62 @@
 #include <fstream>
 #include <iterator>
 
-#pragma comment(lib, "ws2_32.lib")
-
 namespace {
     constexpr size_t MaxRequestSize = 4 * 1024 * 1024;
+
+#ifdef _WIN32
+    constexpr int SendFlags = 0;
+#else
+    using SOCKET = int;
+    constexpr SOCKET INVALID_SOCKET = -1;
+
+    // A client that disconnects mid-write must not raise SIGPIPE and end the simulator
+    constexpr int SendFlags = MSG_NOSIGNAL;
+#endif
+
+    bool networkStart() {
+#ifdef _WIN32
+        WSADATA wsa;
+        return WSAStartup(MAKEWORD(2, 2), &wsa) == 0;
+#else
+        return true;
+#endif
+    }
+
+    void closeSocket(SOCKET s) {
+#ifdef _WIN32
+        closesocket(s);
+#else
+        close(s);
+#endif
+    }
+
+    void setNonBlocking(SOCKET s) {
+#ifdef _WIN32
+        u_long nonBlocking = 1;
+        ioctlsocket(s, FIONBIO, &nonBlocking);
+#else
+        fcntl(s, F_SETFL, fcntl(s, F_GETFL, 0) | O_NONBLOCK);
+#endif
+    }
+
+    void setReceiveTimeout(SOCKET s, int milliseconds) {
+#ifdef _WIN32
+        DWORD ioTimeout = (DWORD)milliseconds;
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, (const char *)&ioTimeout, sizeof(ioTimeout));
+#else
+        timeval ioTimeout = { milliseconds / 1000, (milliseconds % 1000) * 1000 };
+        setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &ioTimeout, sizeof(ioTimeout));
+#endif
+    }
+
+    void shutdownSend(SOCKET s) {
+#ifdef _WIN32
+        shutdown(s, SD_SEND);
+#else
+        shutdown(s, SHUT_WR);
+#endif
+    }
 
     std::string lower(std::string s) {
         std::transform(s.begin(), s.end(), s.begin(), [](unsigned char c) { return (char)std::tolower(c); });
@@ -32,7 +94,7 @@ namespace {
     void sendAll(SOCKET s, const std::string &data) {
         size_t sent = 0;
         while (sent < data.size()) {
-            const int n = send(s, data.data() + sent, (int)(data.size() - sent), 0);
+            const int n = send(s, data.data() + sent, (int)(data.size() - sent), SendFlags);
             if (n <= 0) return;
             sent += n;
         }
@@ -107,23 +169,29 @@ bool LiveServer::start(int port) {
 
     m_port = port;                                   // also kept when the port turns out to be busy
 
-    WSADATA wsa;
-    if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+    if (!networkStart()) return false;
 
     SOCKET s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (s == INVALID_SOCKET) return false;
 
+#ifdef _WIN32
     // Windows: SO_REUSEADDR would let a second program bind the same port; exclusive use reports it as busy
     BOOL exclusive = TRUE;
     setsockopt(s, SOL_SOCKET, SO_EXCLUSIVEADDRUSE, (const char *)&exclusive, sizeof(exclusive));
+#else
+    // Linux: SO_REUSEADDR only lets a new socket bind over connections in TIME_WAIT,
+    // a second live listener on the same port still fails
+    int reuse = 1;
+    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
+#endif
 
     sockaddr_in addr = {};
     addr.sin_family = AF_INET;
-    addr.sin_port = htons((u_short)port);
+    addr.sin_port = htons((uint16_t)port);
     inet_pton(AF_INET, "127.0.0.1", &addr.sin_addr);       // loopback only
 
     if (bind(s, (sockaddr *)&addr, sizeof(addr)) != 0 || listen(s, 4) != 0) {
-        closesocket(s);
+        closeSocket(s);
         return false;
     }
 
@@ -143,14 +211,14 @@ void LiveServer::stop() {
     m_cv.notify_all();                       // release a request that is waiting for the main thread
     if (m_thread.joinable()) m_thread.join();
 
-    closesocket((SOCKET)m_listenSocket);
+    closeSocket((SOCKET)m_listenSocket);
     m_listenSocket = (uintptr_t)INVALID_SOCKET;
     closeStreams();
 }
 
 void LiveServer::closeStreams() {
     std::lock_guard<std::mutex> lock(m_streamMutex);
-    for (uintptr_t s : m_streams) closesocket((SOCKET)s);
+    for (uintptr_t s : m_streams) closeSocket((SOCKET)s);
     m_streams.clear();
     m_streamCount = 0;
 }
@@ -162,18 +230,17 @@ void LiveServer::serve() {
         FD_SET((SOCKET)m_listenSocket, &readSet);
         timeval timeout = { 0, 200 * 1000 };
 
-        if (select(0, &readSet, nullptr, nullptr, &timeout) > 0) {
+        if (select((int)m_listenSocket + 1, &readSet, nullptr, nullptr, &timeout) > 0) {
             SOCKET client = accept((SOCKET)m_listenSocket, nullptr, nullptr);
             if (client != INVALID_SOCKET) {
-                DWORD ioTimeout = 3000;
-                setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char *)&ioTimeout, sizeof(ioTimeout));
+                setReceiveTimeout(client, 3000);
                 if (handleConnection((uintptr_t)client)) continue;      // kept as an event stream
 
                 // Close gracefully: unread request data would otherwise turn into a connection reset
-                shutdown(client, SD_SEND);
+                shutdownSend(client);
                 char sink[4096];
                 for (int i = 0; i < 256 && recv(client, sink, sizeof(sink), 0) > 0; ++i) { /* drain */ }
-                closesocket(client);
+                closeSocket(client);
             }
         }
     }
@@ -243,8 +310,7 @@ bool LiveServer::handleConnection(uintptr_t clientHandle) {
         head += "Access-Control-Allow-Origin: " + (origin.empty() ? std::string("*") : origin) + "\r\nVary: Origin\r\n\r\nretry: 1000\n\n";
         sendAll(client, head);
 
-        u_long nonBlocking = 1;                       // a stalled client must never block the simulation
-        ioctlsocket(client, FIONBIO, &nonBlocking);
+        setNonBlocking(client);                       // a stalled client must never block the simulation
 
         std::lock_guard<std::mutex> lock(m_streamMutex);
         m_streams.push_back((uintptr_t)client);
@@ -331,12 +397,12 @@ void LiveServer::publish(const std::string &json) {
     const std::string frame = "data: " + json + "\n\n";
     for (size_t i = 0; i < m_streams.size();) {
         const SOCKET s = (SOCKET)m_streams[i];
-        const int n = send(s, frame.data(), (int)frame.size(), 0);
+        const int n = send(s, frame.data(), (int)frame.size(), SendFlags);
         if (n == (int)frame.size()) {
             ++i;
         }
         else {                                       // closed, reset or too slow: the page connects again if it is alive
-            closesocket(s);
+            closeSocket(s);
             m_streams.erase(m_streams.begin() + i);
         }
     }
