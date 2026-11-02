@@ -76,6 +76,7 @@ Der Nutzer will **langfristig hauptsächlich unter Linux** arbeiten. Der Browser
 
 ## Nächste Ideen (nur auf Zuruf des Nutzers)
 
+0. **Bekannte Eigenheit:** Nach dem Schließen des Fensters läuft der Motor noch `--grace` (8 s) weiter, das fühlt sich laut Nutzer komisch an („erstmal lassen“). Möglichkeit: Karenz auf ~3 s kürzen oder beim echten Schließen sofort beenden (pagehide + Neuladen unterscheiden).
 1. **Leerlaufregler / Leerlauf-Kennfeld** (zuletzt angeboten).
 2. Variable Nockenwellenverstellung (VVT, Mittellinien live).
 3. Umschaltpunkt nach Last statt fester Drehzahl.
