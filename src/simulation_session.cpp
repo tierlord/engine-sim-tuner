@@ -17,6 +17,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <map>
 #include <sstream>
@@ -627,7 +628,11 @@ SimulationSession::StepResult SimulationSession::step(
 }
 
 int SimulationSession::readAudio(int samples, int16_t *target) {
-    return (m_simulator != nullptr) ? m_simulator->readAudioOutput(samples, target) : 0;
+    if (m_simulator == nullptr) return 0;
+
+    const int read = m_simulator->readAudioOutput(samples, target);
+    if (m_iceEngine != nullptr && read > 0) m_iceEngine->getTurbo()->mixAudio(target, read, 44100.0);
+    return read;
 }
 
 void SimulationSession::shutdown() {
@@ -795,7 +800,7 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
         double enabled = 0;
         if (ss >> enabled) {
             settings.enabled = enabled > 0.5;
-            ss >> settings.targetBoost >> settings.turbineSize >> settings.inertiaScale >> settings.intercooler;
+            ss >> settings.targetBoost >> settings.turbineSize >> settings.inertiaScale >> settings.intercooler >> settings.soundVolume;
             turbo->setSettings(settings);
             applied += settings.enabled ? " turbo=on" : " turbo=off";
         }
@@ -973,6 +978,34 @@ std::string SimulationSession::handleLiveRoute(
 {
     if (method == "POST" && path == "/engine") {
         return handleLiveRequest(body);
+    }
+
+    // POST /save: first line = file name (.mr or .json), the rest is the content; an existing file is overwritten
+    if (method == "POST" && path == "/save") {
+        const size_t eol = body.find('\n');
+        std::string name = body.substr(0, eol);
+        if (!name.empty() && name.back() == '\r') name.pop_back();
+        const std::string content = eol == std::string::npos ? "" : body.substr(eol + 1);
+
+        const auto endsWith = [&](const char *suffix) {
+            const std::string x = suffix;
+            return name.size() > x.size() && name.compare(name.size() - x.size(), x.size(), x) == 0;
+        };
+        bool valid = (endsWith(".mr") || endsWith(".json")) && name != "live_engine.mr" && name[0] != '.';
+        for (char c : name) valid = valid && (std::isalnum((unsigned char)c) || c == '_' || c == '-' || c == '.');
+        if (!valid) return "{\"ok\":false,\"error\":\"invalid file name\"}";
+
+        const char *dirEnv = std::getenv("ENGINE_SIM_SAVE_DIR");
+        const std::string dir = (dirEnv != nullptr && dirEnv[0] != 0) ? dirEnv : "../assets/engines/custom";
+        std::error_code ec;
+        std::filesystem::create_directories(dir, ec);
+        const std::string file = dir + "/" + name;
+        std::ofstream out(file, std::ios::binary | std::ios::trunc);
+        if (!out) return "{\"ok\":false,\"error\":\"cannot write file\"}";
+        out << content;
+        out.close();
+        log(("Saved " + file).c_str());
+        return "{\"ok\":true,\"path\":\"" + jsonEscape(file) + "\"}";
     }
 
     if (method == "GET" && path == "/dyno") {

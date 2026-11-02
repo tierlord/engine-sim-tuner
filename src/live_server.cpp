@@ -328,10 +328,11 @@ bool LiveServer::handleConnection(uintptr_t clientHandle) {
         || (method == "GET" && path == "/telemetry")
         || (method == "GET" && path == "/tune")
         || (method == "POST" && path == "/tune")
+        || (method == "POST" && path == "/save")
         || (method == "POST" && path == "/control");
 
     if (mainThreadRoute) {
-        const bool needsBody = (method == "POST" && path == "/engine");
+        const bool needsBody = (method == "POST" && (path == "/engine" || path == "/save"));
         if ((needsBody && contentLength == 0) || contentLength > MaxRequestSize) {
             sendAll(client, response(400, "Bad Request", origin, "{\"ok\":false,\"error\":\"empty or too large body\"}"));
             return false;

@@ -119,12 +119,13 @@ async function loadTune() {
     setField('c-rev', tune.rev_limit_rpm !== undefined ? Number(tune.rev_limit_rpm) : 8000);
     setField('c-idlethr', tune.idle_throttle_plate_position !== undefined ? Number(tune.idle_throttle_plate_position) : 0.99);
     const cam = (tune.cam_center || '0 0').trim().split(/\s+/).map(Number);
-    const tb = (tune.turbo || '0 0.8 0.35 1 0.7').trim().split(/\s+/).map(Number);
+    const tb = (tune.turbo || '0 0.8 0.35 1 0.7 1').trim().split(/\s+/).map(Number);
     $('tb-on').checked = tb[0] > 0.5;
     setField('tb-boost', tb[1] ?? 0.8);
     setField('tb-size', tb[2] ?? 0.35);
     setField('tb-inertia', tb[3] ?? 1);
     setField('tb-ic', tb[4] ?? 0.7);
+    setField('tb-vol', tb[5] ?? 1);
     setField('c-lambda', tune.lambda !== undefined ? Number(tune.lambda) : 0.8);
     setField('cam-in', cam[0] || 0);
     setField('cam-ex', cam[1] || 0);
@@ -153,10 +154,10 @@ linkField('c-idle', () => soon('curve', () => api.post('/tune', 'timing_curve ' 
 linkField('c-max', () => soon('curve', () => api.post('/tune', 'timing_curve ' + curveText())));
 linkField('c-rev', v => soon('rev', () => api.post('/tune', 'rev_limit_rpm ' + v)));
 linkField('c-idlethr', v => soon('idlethr', () => api.post('/tune', 'idle_throttle_plate_position ' + v)));
-const turboText = () => `turbo ${$('tb-on').checked ? 1 : 0} ${$('tb-boost').value} ${$('tb-size').value} ${$('tb-inertia').value} ${$('tb-ic').value}`;
+const turboText = () => `turbo ${$('tb-on').checked ? 1 : 0} ${$('tb-boost').value} ${$('tb-size').value} ${$('tb-inertia').value} ${$('tb-ic').value} ${$('tb-vol').value}`;
 const sendTurbo = () => soon('turbo', () => api.post('/tune', turboText()), 120);
 $('tb-on').onchange = sendTurbo;
-['tb-boost', 'tb-size', 'tb-inertia', 'tb-ic'].forEach(id => linkField(id, sendTurbo));
+['tb-boost', 'tb-size', 'tb-inertia', 'tb-ic', 'tb-vol'].forEach(id => linkField(id, sendTurbo));
 linkField('c-lambda', v => soon('lambda', () => api.post('/tune', 'lambda ' + v)));
 linkField('cam-in', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 linkField('cam-ex', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
@@ -182,6 +183,8 @@ const cellColor = v => v < 0 ? '#b3272a' : `hsl(${210 - Math.min(1, v / 50) * 17
 function renderMap() {
     const grid = $('map-grid');
     const columns = map.rpm.length;
+    const top = map.load[map.load.length - 1];
+    $('row-info').textContent = `bis ${top} kPa (${((top - 101.3) / 100).toFixed(2)} bar Ladedruck)`;
     grid.style.gridTemplateColumns = `56px repeat(${columns}, 1fr)`;
     grid.innerHTML = '';
 
@@ -308,6 +311,26 @@ function commitCell(cell, index) {
     if (map.on) pushMap();
     cell.select();
 }
+
+// The load axis can grow beyond the ambient pressure for boosted engines: a new top row is a copy of the old one,
+// 1° later (more charge pressure wants less advance)
+function resizeLoadAxis(add) {
+    const rows = map.load.length;
+    if (add ? rows >= 20 : rows <= 3) return;
+    const newRows = add ? rows + 1 : rows - 1;
+    const adv = [];
+    for (let i = 0; i < map.rpm.length; i++) {
+        for (let j = 0; j < newRows; j++) {
+            adv.push(j < rows ? map.adv[i * rows + j] : Math.round((map.adv[i * rows + rows - 1] - 1) * 10) / 10);
+        }
+    }
+    map.adv = adv;
+    if (add) map.load.push(map.load[rows - 1] + 20); else map.load.pop();
+    renderMap();
+    if (map.on) pushMap();
+}
+$('row-add').onclick = () => resizeLoadAxis(true);
+$('row-del').onclick = () => resizeLoadAxis(false);
 
 function pushMap() {
     api.post('/tune', `map_rpm ${map.rpm.join(' ')}\nmap_load ${map.load.join(' ')}\nmap_adv ${map.adv.join(' ')}`);

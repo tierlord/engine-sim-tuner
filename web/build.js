@@ -467,8 +467,17 @@ export function initBuild(hooks) {
         a.href = URL.createObjectURL(new Blob([text], { type }));
         a.download = name; a.click();
     };
-    $('b-mr').addEventListener('click', () => { if (lastCode) download(($('b-file').value || 'engine') .replace(/\.mr$/, '') + '.mr', lastCode, 'text/plain'); });
-    $('b-jsave').addEventListener('click', () => download(($('b-file').value || 'engine').replace(/\.mr$/, '') + '.json', JSON.stringify({ p: readParams(), cfg }, null, 1), 'application/json'));
+    // The simulator writes the file (overwriting an existing one); the browser download is only the fallback
+    const save = async (name, text, type) => {
+        try {
+            const r = await api.post('/save', name + '\n' + text);
+            if (r.ok) { $('b-saved').textContent = 'Gespeichert: ' + r.path; return; }
+            $('b-saved').textContent = 'Speichern fehlgeschlagen: ' + r.error;
+        } catch (e) { download(name, text, type); }
+    };
+    const baseName = () => ($('b-file').value || 'engine').replace(/\.(mr|json)$/, '');
+    $('b-mr').addEventListener('click', () => { if (lastCode) save(baseName() + '.mr', lastCode, 'text/plain'); });
+    $('b-jsave').addEventListener('click', () => save(baseName() + '.json', JSON.stringify({ p: readParams(), cfg }, null, 1), 'application/json'));
     $('b-jload').addEventListener('click', () => $('b-jfile').click());
     $('b-jfile').addEventListener('change', async () => {
         const file = $('b-jfile').files[0];

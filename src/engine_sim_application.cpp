@@ -286,7 +286,7 @@ void EngineSimApplication::process(float frame_dt) {
     }
 
     int16_t *samples = new int16_t[maxWrite];
-    const int readSamples = m_session.simulator()->readAudioOutput(maxWrite, samples);
+    const int readSamples = m_session.readAudio(maxWrite, samples);
 
     for (SampleOffset i = 0; i < (SampleOffset)readSamples && i < maxWrite; ++i) {
         const int16_t sample = samples[i];
