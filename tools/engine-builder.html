@@ -119,6 +119,7 @@
         <button id="cp" class="sec">Kopieren</button>
         <button id="live" class="sec" title="Ausweichlösung: schreibt jede Änderung in eine Datei, die Sie auswählen (assets/engines/custom/live_engine.mr)">Per Datei…</button>
         <span id="liveState" style="font-size:12px;color:#8b95a1"></span>
+        <span id="liveStats" style="font-size:12px;color:#8b95a1"></span>
         <span style="flex:1"></span>
         <button id="jsave" class="sec">Konfig speichern</button>
         <button id="jload" class="sec">Konfig laden</button>
@@ -1331,15 +1332,34 @@ if (typeof document !== "undefined") {
         simTimer = setTimeout(() => { if (simConnected) pushToSim(); else liveWrite(); }, 300);
     }
 
+    // Event stream of the simulator: tells it that this page is alive and delivers the live values
+    let simEvents = null;
+    function openSimEvents() {
+        if (simEvents || typeof EventSource === "undefined") return;
+        simEvents = new EventSource(SIM_URL + "/events");
+        simEvents.onmessage = ev => {
+            let d; try { d = JSON.parse(ev.data); } catch (e) { return; }
+            $("liveStats").textContent = d.engine
+                ? `· ${Math.round(d.rpm)} U/min · ${Math.round(d.map_kpa)} kPa · ${d.advance_deg.toFixed(0)}° Zündung${d.knock >= 0.1 ? " · klopft" : ""}${d.destroyed ? " · MOTORSCHADEN" : ""}`
+                : "";
+        };
+    }
+    function closeSimEvents() {
+        if (simEvents) { simEvents.close(); simEvents = null; }
+        $("liveStats").textContent = "";
+    }
+
     // look for the simulator every 2 s; connect automatically as soon as its live mode is on
     async function watchSim() {
         const found = await probeSim();
         if (found && !simConnected) {
             simConnected = true;
+            openSimEvents();
             setLiveState(`<span class="ok">● Simulator verbunden</span>`);
             if (!$("dl").disabled) pushToSim();               // send the current engine right away
         } else if (!found && simConnected) {
             simConnected = false;
+            closeSimEvents();
             setLiveState(`<span class="warn">○ Simulator getrennt</span>`);
         } else if (!found && !liveHandle) {
             setLiveState(`<span style="color:#6f7a86">○ Simulator nicht gefunden - dort F5 drücken</span>`);

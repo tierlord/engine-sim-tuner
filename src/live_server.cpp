@@ -57,6 +57,7 @@ LiveServer::LiveServer() {
     m_port = 0;
     m_hasRequest = false;
     m_hasResponse = false;
+    m_streamCount = 0;
 }
 
 LiveServer::~LiveServer() {
@@ -104,6 +105,14 @@ void LiveServer::stop() {
 
     closesocket((SOCKET)m_listenSocket);
     m_listenSocket = (uintptr_t)INVALID_SOCKET;
+    closeStreams();
+}
+
+void LiveServer::closeStreams() {
+    std::lock_guard<std::mutex> lock(m_streamMutex);
+    for (uintptr_t s : m_streams) closesocket((SOCKET)s);
+    m_streams.clear();
+    m_streamCount = 0;
 }
 
 void LiveServer::serve() {
@@ -118,7 +127,7 @@ void LiveServer::serve() {
             if (client != INVALID_SOCKET) {
                 DWORD ioTimeout = 3000;
                 setsockopt(client, SOL_SOCKET, SO_RCVTIMEO, (const char *)&ioTimeout, sizeof(ioTimeout));
-                handleConnection((uintptr_t)client);
+                if (handleConnection((uintptr_t)client)) continue;      // kept as an event stream
 
                 // Close gracefully: unread request data would otherwise turn into a connection reset
                 shutdown(client, SD_SEND);
@@ -130,7 +139,7 @@ void LiveServer::serve() {
     }
 }
 
-void LiveServer::handleConnection(uintptr_t clientHandle) {
+bool LiveServer::handleConnection(uintptr_t clientHandle) {
     SOCKET client = (SOCKET)clientHandle;
 
     // Read until the end of the headers
@@ -139,11 +148,11 @@ void LiveServer::handleConnection(uintptr_t clientHandle) {
     size_t headerEnd = std::string::npos;
     while (headerEnd == std::string::npos && data.size() < MaxRequestSize) {
         const int n = recv(client, buffer, sizeof(buffer), 0);
-        if (n <= 0) return;
+        if (n <= 0) return false;
         data.append(buffer, n);
         headerEnd = data.find("\r\n\r\n");
     }
-    if (headerEnd == std::string::npos) return;
+    if (headerEnd == std::string::npos) return false;
 
     const std::string head = data.substr(0, headerEnd);
     std::string body = data.substr(headerEnd + 4);
@@ -176,17 +185,31 @@ void LiveServer::handleConnection(uintptr_t clientHandle) {
 
     if (!originAllowed(origin)) {
         sendAll(client, response(403, "Forbidden", "", "{\"ok\":false,\"error\":\"origin not allowed\"}"));
-        return;
+        return false;
     }
 
     if (method == "OPTIONS") {
         sendAll(client, response(204, "No Content", origin, ""));
-        return;
+        return false;
     }
 
     if (method == "GET" && path == "/status") {
         sendAll(client, response(200, "OK", origin, "{\"app\":\"engine-sim\",\"live\":true}"));
-        return;
+        return false;
+    }
+
+    if (method == "GET" && path == "/events") {
+        std::string head = "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-store\r\nConnection: keep-alive\r\n";
+        head += "Access-Control-Allow-Origin: " + (origin.empty() ? std::string("*") : origin) + "\r\nVary: Origin\r\n\r\nretry: 1000\n\n";
+        sendAll(client, head);
+
+        u_long nonBlocking = 1;                       // a stalled client must never block the simulation
+        ioctlsocket(client, FIONBIO, &nonBlocking);
+
+        std::lock_guard<std::mutex> lock(m_streamMutex);
+        m_streams.push_back((uintptr_t)client);
+        m_streamCount = (int)m_streams.size();
+        return true;
     }
 
     // Everything below touches the simulation, so it is executed on the main thread
@@ -202,12 +225,12 @@ void LiveServer::handleConnection(uintptr_t clientHandle) {
         const bool needsBody = (method == "POST" && path == "/engine");
         if ((needsBody && contentLength == 0) || contentLength > MaxRequestSize) {
             sendAll(client, response(400, "Bad Request", origin, "{\"ok\":false,\"error\":\"empty or too large body\"}"));
-            return;
+            return false;
         }
 
         while (body.size() < contentLength) {
             const int n = recv(client, buffer, sizeof(buffer), 0);
-            if (n <= 0) return;
+            if (n <= 0) return false;
             body.append(buffer, n);
         }
         body.resize(contentLength);
@@ -229,10 +252,11 @@ void LiveServer::handleConnection(uintptr_t clientHandle) {
         else {
             sendAll(client, response(504, "Gateway Timeout", origin, "{\"ok\":false,\"error\":\"simulator did not answer in time\"}"));
         }
-        return;
+        return false;
     }
 
     sendAll(client, response(404, "Not Found", origin, "{\"ok\":false,\"error\":\"unknown route\"}"));
+    return false;
 }
 
 void LiveServer::poll(const Handler &handler) {
@@ -253,4 +277,24 @@ void LiveServer::poll(const Handler &handler) {
         m_hasResponse = true;
     }
     m_cv.notify_all();
+}
+
+void LiveServer::publish(const std::string &json) {
+    std::lock_guard<std::mutex> lock(m_streamMutex);
+    if (m_streams.empty()) return;
+
+    const std::string frame = "data: " + json + "\n\n";
+    for (size_t i = 0; i < m_streams.size();) {
+        const SOCKET s = (SOCKET)m_streams[i];
+        const int n = send(s, frame.data(), (int)frame.size(), 0);
+        if (n == (int)frame.size()) {
+            ++i;
+        }
+        else {                                       // closed, reset or too slow: the page connects again if it is alive
+            closesocket(s);
+            m_streams.erase(m_streams.begin() + i);
+        }
+    }
+
+    m_streamCount = (int)m_streams.size();
 }

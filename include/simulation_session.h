@@ -78,6 +78,7 @@ class SimulationSession {
         StepResult step(double dt, double simulationSpeed, const std::function<void()> &perStep);
         void updateDyno(float dt) { m_dynoSweep.update(dt, m_iceEngine, m_simulator); }
         int readAudio(int samples, int16_t *target);
+        std::string telemetryJson();                           // current values as JSON (GET /telemetry, /events)
 
         Engine *engine() const { return m_iceEngine; }
         Simulator *simulator() const { return m_simulator; }
@@ -93,7 +94,6 @@ class SimulationSession {
         std::string applyLiveTuning(const std::string &path);
         std::string handleLiveRequest(const std::string &body);
         std::string handleLiveRoute(const std::string &method, const std::string &path, const std::string &body);
-        std::string telemetryJson();
         std::string handleControl(const std::string &body);
         void log(const std::string &message);
 
@@ -115,6 +115,7 @@ class SimulationSession {
         bool m_live = false;
         bool m_livePending = false;
         float m_livePollTimer = 0.0f;
+        float m_publishTimer = 0.0f;           // telemetry goes to the open /events streams every 50 ms
         std::filesystem::file_time_type m_liveStamp;
         DynoSweep m_dynoSweep;                 // automatic dyno run on the running simulator
         LiveServer m_liveServer;               // lets tools/engine-builder.html push engines without a file picker

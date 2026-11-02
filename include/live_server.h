@@ -8,6 +8,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <vector>
 
 // Tiny HTTP server on 127.0.0.1 used by tools/engine-builder.html in live mode.
 //
@@ -16,6 +17,8 @@
 //   POST /dyno       -> starts a dyno run (body = "key=value" lines)
 //   POST /dyno/stop  -> aborts it
 //   GET  /dyno       -> progress and measured points
+//   GET  /events     -> Server-Sent Events: every publish() reaches all open streams. An open stream
+//                       tells the program that a user interface is alive (see streamCount()).
 //   GET  /telemetry  -> current engine values (rpm, load, ignition advance, knock, ...)
 //   POST /control    -> driver input as "key=value" lines (throttle, clutch, starter, ignition, shift, dyno ...)
 //
@@ -36,14 +39,23 @@ class LiveServer {
         // Call from the main thread every frame
         void poll(const Handler &handler);
 
+        // Sends one event to every open /events stream (main thread). Streams that cannot take it are closed.
+        void publish(const std::string &json);
+        int streamCount() const { return m_streamCount; }
+
     private:
         void serve();
-        void handleConnection(uintptr_t client);
+        bool handleConnection(uintptr_t client);          // true: the socket was kept as an event stream
+        void closeStreams();
 
         std::thread m_thread;
         std::atomic<bool> m_running;
         uintptr_t m_listenSocket;
         int m_port;
+
+        std::mutex m_streamMutex;
+        std::vector<uintptr_t> m_streams;
+        std::atomic<int> m_streamCount;
 
         std::mutex m_mutex;
         std::condition_variable m_cv;

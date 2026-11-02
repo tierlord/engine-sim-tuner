@@ -329,6 +329,12 @@ void SimulationSession::updateLive(float dt) {
         }
     }
 
+    m_publishTimer += dt;
+    if (m_publishTimer >= 0.05f) {
+        m_publishTimer = 0.0f;
+        if (m_liveServer.streamCount() > 0) m_liveServer.publish(telemetryJson());
+    }
+
     m_liveServer.poll([this](const std::string &method, const std::string &path, const std::string &body) {
         return handleLiveRoute(method, path, body);
     });
