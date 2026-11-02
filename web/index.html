@@ -18,6 +18,8 @@
   <div class="grow"></div>
   <div class="ctl only-tune">Gas <input id="gas" type="range" min="0" max="100" value="0" title="Gaspedal"> <b id="gasv" style="color:var(--text);width:38px">0 %</b></div>
   <button id="starter" class="only-tune" title="Gedrückt halten">Starter (halten)</button>
+  <button id="cold" class="only-tune" title="Motor auf Umgebungstemperatur setzen">Kalt</button>
+  <button id="warm" class="only-tune" title="Motor auf Betriebstemperatur setzen">Warm</button>
   <button id="ign" class="only-tune">Zündung</button>
 </header>
 
@@ -26,6 +28,7 @@
   <div class="tile"><label>Last (MAP)</label><div class="v"><span id="t-map">–</span> <small>kPa</small></div></div>
   <div class="tile"><label>Zündwinkel</label><div class="v"><span id="t-adv">–</span> <small>° v. OT</small></div></div>
   <div class="tile"><label>Drehmoment</label><div class="v"><span id="t-nm">–</span> <small id="t-ps"></small></div></div>
+  <div class="tile"><label>Motortemperatur</label><div class="v" id="t-temp-box"><span id="t-temp">–</span> <small>°C</small></div></div>
   <div class="tile"><label>Klopfen</label><div class="v" id="t-knock-box"><span id="t-knock">–</span> <small>%</small></div></div>
   <div class="tile"><label>Motorschaden</label><div class="v" id="t-dmg-box"><span id="t-dmg">–</span> <small>%</small></div></div>
   <div class="tile"><label>Nocken</label><div class="v" id="t-cam">–</div></div>

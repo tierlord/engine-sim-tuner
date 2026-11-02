@@ -532,7 +532,7 @@ std::string SimulationSession::telemetryJson() {
         "\"throttle\":%.3f,\"map_kpa\":%.1f,\"advance_deg\":%.1f,\"torque_nm\":%.1f,\"power_kw\":%.2f,"
         "\"gear\":%d,\"clutch\":%.2f,\"speed_kmh\":%.1f,\"starter\":%s,\"ignition\":%s,"
         "\"dyno\":%s,\"dyno_hold\":%s,\"knock\":%.3f,\"knock_events\":%ld,\"damage\":%.3f,\"destroyed\":%s,"
-        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f}",
+        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f,\"engine_temp\":%.1f}",
         jsonEscape(m_iceEngine->getName()).c_str(),
         m_iceEngine->getRpm(),
         units::toRpm(m_iceEngine->getRedline()),
@@ -557,7 +557,8 @@ std::string SimulationSession::telemetryJson() {
         m_live ? "true" : "false",
         m_dynoSweep.stateName(),
         m_dynoSweep.modeName(),
-        ignition->getAdvanceOffset() / units::deg);
+        ignition->getAdvanceOffset() / units::deg,
+        m_iceEngine->getWallTemperature() - units::celcius(0.0));
 
     return text;
 }
@@ -768,6 +769,12 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
             applyCamCenter();
             applied += " cam_center=" + std::to_string(m_camCenterIntake).substr(0, 5) + "/" + std::to_string(m_camCenterExhaust).substr(0, 5);
         }
+    }
+
+    // Engine temperature in degrees Celsius: jumps the thermal state (e.g. "warm start")
+    if (number("engine_temp", &v)) {
+        m_iceEngine->setWallTemperature(units::celcius(std::clamp(v, -20.0, 130.0)));
+        applied += " engine_temp=" + std::to_string((int)v);
     }
 
     if (number("advance_offset", &v)) {

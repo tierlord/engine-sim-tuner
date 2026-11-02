@@ -38,6 +38,7 @@ Engine::Engine() {
     m_throttleValue = 0.0;
     m_knockDamage = 0.0;
     m_knockDamageEnabled = true;
+    m_wallTemperature = units::celcius(25.0);
 
     m_initialSimulationFrequency = 10000.0;
     m_initialHighFrequencyGain = 0.01;
@@ -454,4 +455,22 @@ double Engine::getSpeed() const {
 
 bool Engine::isSpinningCw() const {
     return getOutputCrankshaft()->m_body.v_theta <= 0;
+}
+
+void Engine::exchangeWallHeat(double energyFromGas, double dt) {
+    // Calibration: heat capacity of block, head and coolant [J/K], loss to the air [W/K],
+    // and the radiator power at fully open thermostat [W]
+    constexpr double HeatCapacity = 30000.0;
+    constexpr double AmbientLoss = 15.0;
+    constexpr double RadiatorPower = 12000.0;
+    const double ambient = units::celcius(25.0);
+
+    m_wallTemperature += energyFromGas / HeatCapacity;
+
+    // Every chamber calls this once per step, so each one accounts for its share of the cooling
+    const double thermostatOpen = std::fmin(std::fmax((m_wallTemperature - units::celcius(85.0)) / 10.0, 0.0), 1.0);
+    const double coolingPower = AmbientLoss * (m_wallTemperature - ambient) + RadiatorPower * thermostatOpen;
+    m_wallTemperature -= coolingPower * dt / std::fmax(m_cylinderCount, 1) / HeatCapacity;
+
+    m_wallTemperature = std::fmin(std::fmax(m_wallTemperature, units::celcius(-40.0)), units::celcius(200.0));
 }

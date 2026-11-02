@@ -270,9 +270,12 @@ void CombustionChamber::flow(double dt) {
         cylinderHeight * constants::pi * m_head->getCylinderBank()->getBore()
         + m_cylinderCrossSectionSurfaceArea * 2;
 
-    const double dT = units::celcius(90.0) - m_system.temperature();
+    // The wall temperature is the engine's thermal state (it warms up), not a fixed 90 C
+    const double dT = m_engine->getWallTemperature() - m_system.temperature();
+    const double wallEnergy = dT * cylinderSurfaceArea * 100 * dt;
 
-    m_system.changeEnergy(dT * cylinderSurfaceArea * 100 * dt);
+    m_system.changeEnergy(wallEnergy);
+    m_engine->exchangeWallHeat(-wallEnergy, dt);
     m_system.flow(m_piston->getBlowbyK() * m_engine->getDamageBlowbyFactor(), dt, m_crankcasePressure, units::celcius(25.0));
 
     Intake *intake = m_head->getIntake(m_piston->getCylinderIndex());

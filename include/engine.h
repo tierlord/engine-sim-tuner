@@ -70,6 +70,13 @@ class Engine : public Part {
         void repairKnockDamage() { m_knockDamage = 0.0; }
         double getDamageEfficiencyFactor() const { return 1.0 - 0.30 * m_knockDamage; }
         double getDamageBlowbyFactor() const { return 1.0 + 8.0 * m_knockDamage; }
+
+        // Thermal state: one temperature for block, head and coolant. The cylinder walls pull the gas towards it.
+        // It starts at ambient temperature, takes the heat the gas gives off and is cooled towards ambient,
+        // with a thermostat that opens the radiator around 90 C.
+        double getWallTemperature() const { return m_wallTemperature; }
+        void setWallTemperature(double kelvin) { m_wallTemperature = kelvin; }
+        void exchangeWallHeat(double energyFromGas, double dt);
         void setKnockDamageEnabled(bool enabled) { m_knockDamageEnabled = enabled; }
         bool isKnockDamageEnabled() const { return m_knockDamageEnabled; }
 
@@ -170,6 +177,7 @@ class Engine : public Part {
         double m_throttleValue;
         double m_knockDamage;
         bool m_knockDamageEnabled;
+        double m_wallTemperature;
         double m_displacement;
 };
 

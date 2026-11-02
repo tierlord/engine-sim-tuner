@@ -60,6 +60,8 @@ function onTelemetry(d) {
     $('t-adv').textContent = fmt(d.advance_deg);
     $('t-nm').textContent = fmt(d.torque_nm);
     $('t-ps').textContent = d.torque_nm !== 0 ? `Nm · ${fmt(d.power_kw * 1.35962)} PS` : 'Nm';
+    $('t-temp').textContent = fmt(d.engine_temp);
+    $('t-temp-box').className = 'v ' + (d.engine_temp < 60 ? 'warn' : 'ok');
     $('t-knock').textContent = fmt(d.knock * 100);
     $('t-knock-box').className = 'v ' + (d.knock >= 0.1 ? 'warn' : 'ok');
     $('t-dmg').textContent = fmt(d.damage * 100);
@@ -96,6 +98,8 @@ const starter = on => api.post('/control', `starter=${on ? 1 : 0}`);
 $('starter').addEventListener('pointerdown', e => { $('starter').setPointerCapture(e.pointerId); starter(true); });
 ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(ev => $('starter').addEventListener(ev, () => starter(false)));
 window.addEventListener('blur', () => starter(false));
+$('cold').onclick = () => api.post('/tune', 'engine_temp 25');
+$('warm').onclick = () => api.post('/tune', 'engine_temp 90');
 $('ign').onclick = () => api.post('/control', `ignition=${last && last.ignition ? 0 : 1}`);
 
 /* ------------------------------------------------------------------ tuning state (server is the source of truth) */
