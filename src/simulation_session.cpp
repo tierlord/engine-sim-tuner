@@ -839,6 +839,10 @@ static std::string jsonEscape(const std::string &in) {
 // Called on the main thread for every engine pushed by the engine builder
 std::string SimulationSession::handleLiveRequest(const std::string &body) {
     {
+        // the folder is not part of the repository (it holds the user's own engine): create it on a fresh checkout
+        std::error_code directoryError;
+        std::filesystem::create_directories(std::filesystem::path(liveEngineFile()).parent_path(), directoryError);
+
         std::ofstream file(liveEngineFile().c_str(), std::ios::binary | std::ios::trunc);
         file.write(body.data(), (std::streamsize)body.size());
         if (!file.good()) {

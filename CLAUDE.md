@@ -20,10 +20,21 @@ Alles unten ist im Arbeitsverzeichnis, aber **nicht in Git**. Auch die Submodule
 | Oberfläche | Gauges: Zündwinkel, Drossel, MAP, Klopfen, Schaden, Oktan; Nm und PS |
 | Nockenfelder | Schieberegler neben den Zahlenfeldern (Hub 3–22 mm, Dauer 150–330°) – **im Browser noch nicht visuell geprüft** |
 
+## Auf einem anderen Rechner einrichten (Windows)
+
+1. Visual Studio mit der C++-Arbeitslast (bringt CMake, Ninja und `vswhere` mit).
+2. vcpkg klonen und bootstrappen, dann `vcpkg install sdl2 sdl2-image boost-filesystem --triplet x64-windows-static-md`. Umgebungsvariable **`VCPKG_ROOT`** auf den vcpkg-Ordner setzen.
+3. `winget install WinFlexBison.win_flex_bison` (danach eine neue Konsole öffnen).
+4. Repository holen (Branch `tuner`) und `git submodule update --init --recursive`.
+5. **Lokale Submodul-Fixes anwenden** (die Änderungen liegen nicht in den Submodul-Repos): `git -C dependencies/submodules/piranha apply ../../../patches/piranha-local.patch` und `git -C dependencies/submodules/delta-studio apply ../../../patches/delta-studio-local.patch`.
+6. `tools\windows-build\build.bat` im Projektordner (baut `engine-sim-server` und `engine-sim-app` nach `build\`; frische Konfiguration getestet).
+7. `build\engine-sim-server.exe` starten: öffnet die Oberfläche. Ohne Motor beginnt sie im Bauen. Der Ordner `assets/engines/custom/` wird beim ersten „Motor laden“ angelegt.
+
+**Nicht in Git:** die eigene Motordatei `assets/engines/custom/live_engine.mr`, der Zustand im Browser (Bauen-Einstellungen, Messläufe) – im Bauen mit „Konfig speichern“ als JSON sichern, „Konfig laden“ holt sie zurück –, die Test-Programme im Scratchpad.
 ## Bauen und Starten
 
 - Toolchain: MSVC (VS 2026), CMake/Ninja, vcpkg in `C:\Users\joey7\vcpkg` (Triplet `x64-windows-static-md`), WinFlexBison.
-- Build-Ordner `build/` (gitignored). Exe **aus `build\` starten** (relative Pfade `../assets`).
+- Build-Ordner `build/` (gitignored); `tools\windows-build\build.bat` baut alles (`BUILD_DIR` ändert den Ordner). Exe **aus `build\` starten** (relative Pfade `../assets`).
 - Lokale Submodul-Fixes: `piranha/src/path.cpp` (`is_complete` → `is_absolute`), `delta-studio/CMakeLists.txt` (d3dx10.lib vor d3dx10d.lib).
 - `src/engine_sim_application.cpp` hat **CRLF**-Zeilenenden.
 - Läuft der Simulator noch, ist die Exe gesperrt: alte Exe umbenennen (`engine-sim-app.prev.exe`), dann neu linken. **Den laufenden Prozess des Nutzers nie beenden.**
