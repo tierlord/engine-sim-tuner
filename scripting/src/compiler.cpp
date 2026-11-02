@@ -32,6 +32,10 @@ void es_script::Compiler::initialize() {
 bool es_script::Compiler::compile(const piranha::IrPath &path) {
     bool successful = false;
 
+    // The output is shared between compiles: forget results of previous scripts so a
+    // script that never calls set_engine() cannot hand back a stale (freed) engine
+    *output() = Output();
+
     std::ofstream file("error_log.log", std::ios::out);
     piranha::IrCompilationUnit *unit = m_compiler->compile(path);
     if (unit == nullptr) {

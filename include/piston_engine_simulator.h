@@ -30,6 +30,12 @@ class PistonEngineSimulator : public Simulator {
         virtual void destroy() override;
 
         void setFluidSimulationSteps(int steps) { m_fluidSimulationSteps = steps; }
+
+        // Safe to change while the simulation runs (constraint limits are read every step)
+        void setCrankshaftFrictionTorque(int i, double torque) {
+            m_crankshaftFrictionConstraints[i].m_minTorque = -torque;
+            m_crankshaftFrictionConstraints[i].m_maxTorque = torque;
+        }
         int getFluidSimulationSteps() const { return m_fluidSimulationSteps; }
         int getFluidSimulationFrequency() const { return m_fluidSimulationSteps * getSimulationFrequency(); }
 

@@ -31,3 +31,11 @@ Camshaft *StandardValvetrain::getActiveIntakeCamshaft() {
 Camshaft *StandardValvetrain::getActiveExhaustCamshaft() {
     return m_exhaustCamshaft;
 }
+
+void StandardValvetrain::setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) {
+    (void)intakeHigh;
+    (void)exhaustHigh;
+
+    if (intakeLow != nullptr) m_intakeCamshaft->setLobeProfile(intakeLow);
+    if (exhaustLow != nullptr) m_exhaustCamshaft->setLobeProfile(exhaustLow);
+}

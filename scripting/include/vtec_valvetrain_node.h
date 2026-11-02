@@ -39,6 +39,7 @@ namespace es_script {
             params.minSpeed = m_parameters.minSpeed;
             params.minThrottlePosition = m_parameters.minThrottlePosition;
             params.manifoldVacuum = m_parameters.manifoldVacuum;
+            params.hysteresis = m_parameters.hysteresis;
             params.engine = context->getEngine();
             valvetrain->initialize(params);
 
@@ -56,6 +57,7 @@ namespace es_script {
             addInput("min_speed", &m_parameters.minSpeed);
             addInput("manifold_vacuum", &m_parameters.manifoldVacuum);
             addInput("min_throttle_position", &m_parameters.minThrottlePosition);
+            addInput("hysteresis", &m_parameters.hysteresis);
 
             ValvetrainNode::registerInputs();
         }

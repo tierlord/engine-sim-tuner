@@ -42,6 +42,7 @@ class Camshaft : public Part {
         double getAngle() const;
 
         Function *getLobeProfile() const { return m_lobeProfile; }
+        void setLobeProfile(Function *profile) { m_lobeProfile = profile; }     // safe while the simulation runs
         double getAdvance() const { return m_advance; }
         double getBaseRadius() const { return m_baseRadius; }
 

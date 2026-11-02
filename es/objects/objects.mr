@@ -61,6 +61,8 @@ public node fuel => __engine_sim__fuel {
     input low_efficiency_attenuation [float]: 0.6;
     input max_turbulence_effect [float]: 2.0;
     input max_dilution_effect [float]: 10.0;
+    // research octane number (RON) for the knock model; 0 switches knock off
+    input octane [float]: 0.0;
     alias output __out [fuel_channel];
 }
 
@@ -354,6 +356,7 @@ public node vtec_valvetrain => __engine_sim__vtec_valvetrain {
     input min_speed [float]: 10 * units.mph;
     input manifold_vacuum [float]: 1.0 * units.atm - 5.0 * units.inHg;
     input min_throttle_position [float]: 0.3;
+    input hysteresis [float]: 0.0 * units.rpm;
 
     alias output __out [valvetrain_channel];
 }

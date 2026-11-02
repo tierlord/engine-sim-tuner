@@ -74,6 +74,7 @@ class CylinderHead : public Part {
         double getExhaustRunnerVolume() const { return m_exhaustRunnerVolume; }
         double getExhaustRunnerCrossSectionArea() const { return m_exhaustRunnerCrossSectionArea; }
 
+        Valvetrain *getValvetrain() const { return m_valvetrain; }
         Camshaft *getExhaustCamshaft();
         Camshaft *getIntakeCamshaft();
 

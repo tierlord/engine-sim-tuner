@@ -11,6 +11,7 @@ public:
         double minSpeed;
         double manifoldVacuum;
         double minThrottlePosition;
+        double hysteresis = 0.0;      // [rad/s] the profile switches back this far below minRpm
 
         Camshaft *intakeCamshaft;
         Camshaft *exhaustCamshaft;
@@ -33,6 +34,11 @@ public:
     virtual Camshaft *getActiveIntakeCamshaft() override;
     virtual Camshaft *getActiveExhaustCamshaft() override;
 
+    virtual bool hasHighLift() const override { return true; }
+    virtual bool isHighLiftActive() const override { return isVtecEnabled(); }
+    virtual void setSwitching(double minRpm, double hysteresis, double minThrottle, double minManifoldPressure) override;
+    virtual void setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) override;
+
 private:
     bool isVtecEnabled() const;
 
@@ -48,6 +54,8 @@ private:
     double m_minSpeed;
     double m_manifoldVacuum;
     double m_minThrottlePosition;
+    double m_hysteresis;
+    mutable bool m_active;           // profile in use; switching back needs the hysteresis
 };
 
 #endif /* ATG_ENGINE_SIM_VTEC_STANDARD_VALVETRAIN_H */

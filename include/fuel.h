@@ -23,6 +23,8 @@ class Fuel {
             double maxBurningEfficiency = 0.8;
             double maxTurbulenceEffect = 2.0;
             double maxDilutionEffect = 50.0;
+            // Research octane number (RON); 0 switches the knock model off
+            double octane = 0.0;
             Function *turbulenceToFlameSpeedRatio = nullptr;
         };
 
@@ -51,6 +53,10 @@ class Fuel {
 
         double getMolecularAfr() const { return m_molecularAfr; }
 
+        // Safe to change while the simulation runs
+        inline double getOctane() const { return m_octane; }
+        inline void setOctane(double octane) { m_octane = octane; }
+
     protected:
         std::string m_name;
         double m_molecularMass;
@@ -62,6 +68,7 @@ class Fuel {
         double m_lowEfficiencyAttenuation;
         double m_maxTurbulenceEffect;
         double m_maxDilutionEffect;
+        double m_octane;
 
         Function *m_turbulenceToFlameSpeedRatio;
 };

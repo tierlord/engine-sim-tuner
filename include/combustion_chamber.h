@@ -72,6 +72,12 @@ class CombustionChamber : public atg_scs::ForceGenerator {
 
         double getLastIterationExhaustFlow() const { return m_exhaustFlow; }
 
+        // --- knock: self-ignition of the unburned gas ahead of the flame (needs a fuel with an octane number) ---
+        double getKnockLevel() const { return m_knockLevel; }              // strongest recent knock, fades out
+        long getKnockEventCount() const { return m_knockEvents; }
+        double getKnockIntegral() const { return m_knockIntegral; }        // Livengood-Wu integral of this cycle, 1.0 = knock
+        double popKnockRing(double dt, double sampleRate);                 // next audio sample of the knock "ping" [Pa]
+
         void resetLastTimestepExhaustFlow() { m_lastTimestepTotalExhaustFlow = 0; }
         double getLastTimestepExhaustFlow() const { return m_lastTimestepTotalExhaustFlow; }
 
@@ -93,6 +99,7 @@ class CombustionChamber : public atg_scs::ForceGenerator {
     protected:
         double calculateFrictionForce(double v) const;
         void updateCycleStates();
+        void updateKnock(double dt);
 
         double m_intakeFlowRate;
         double m_exhaustFlowRate;
@@ -113,6 +120,20 @@ class CombustionChamber : public atg_scs::ForceGenerator {
         static constexpr int StateSamples = 256;
 
         bool m_litLastFrame;
+
+        // knock model state
+        double m_knockIntegral;
+        double m_knockCycleFactor;       // cycle-to-cycle scatter of the ignition delay
+        double m_knockPIvc;
+        double m_knockTIvc;
+        bool m_knockActive;
+        bool m_knockFlameStarted;
+        bool m_knockFlameDone;
+        bool m_knockedThisCycle;
+        double m_knockLevel;
+        long m_knockEvents;
+        double m_knockRingAmp;
+        double m_knockRingPhase;
 
         Piston *m_piston;
         CylinderHead *m_head;

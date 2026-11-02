@@ -60,6 +60,26 @@ class Engine : public Part {
         virtual double getSpeedControl();
         virtual void setThrottle(double throttle);
         virtual double getThrottle() const;
+
+        // --- engine knock: damage caused by knocking cycles (see CombustionChamber::updateKnock) ---
+        // 0 = undamaged, 1 = destroyed. Damage lowers the combustion efficiency, raises the blow-by and
+        // finally stops the engine.
+        void addKnockDamage(double severity);
+        double getKnockDamage() const { return m_knockDamage; }
+        bool isDestroyed() const { return m_knockDamage >= 1.0; }
+        void repairKnockDamage() { m_knockDamage = 0.0; }
+        double getDamageEfficiencyFactor() const { return 1.0 - 0.30 * m_knockDamage; }
+        double getDamageBlowbyFactor() const { return 1.0 + 8.0 * m_knockDamage; }
+        void setKnockDamageEnabled(bool enabled) { m_knockDamageEnabled = enabled; }
+        bool isKnockDamageEnabled() const { return m_knockDamageEnabled; }
+
+        // cam profile switching (VTEC): is there a high-lift profile and is it in use?
+        bool hasHighLift() const;
+        bool isHighLiftActive() const;
+
+        // strongest recent knock of all cylinders (0..~1) and the number of knock events so far
+        double getKnockLevel() const;
+        long getKnockEventCount() const;
         virtual double getThrottlePlateAngle() const;
         virtual void calculateDisplacement();
         double getDisplacement() const { return m_displacement; }
@@ -148,6 +168,8 @@ class Engine : public Part {
         Throttle *m_throttle;
 
         double m_throttleValue;
+        double m_knockDamage;
+        bool m_knockDamageEnabled;
         double m_displacement;
 };
 

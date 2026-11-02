@@ -11,7 +11,34 @@
 
 #include <cmath>
 
+namespace {
+    // Knock model constants. The ignition delay follows the common Douaud/Eyzat correlation for gasoline,
+    // tau[ms] = 17.68 (RON/100)^3.402 p[atm]^-1.7 exp(3800/T), applied to the unburned gas (Livengood-Wu integral).
+    constexpr double KnockGamma = 1.35;               // isentropic compression of the end gas
+    constexpr double KnockChargeHeating = 85.0;       // [K] the simulated charge is colder at intake closing than a real one
+    constexpr double KnockDelayScale = 1.0;           // overall scale of the ignition delay (calibration)
+    constexpr double KnockCycleScatter = 0.12;        // +- scatter of the ignition delay from cycle to cycle (inhomogeneous charge)
+    constexpr double KnockBurnBoost = 25.0;           // the end gas burns this much faster once it self-ignites
+    constexpr double KnockEfficiencyLoss = 0.50;      // part of the energy that is lost to the walls in a knocking burn
+    constexpr double KnockLevelDecay = 0.25;          // [s] fade-out of the knock indicator
+    constexpr double KnockRingFrequency = 4000.0;     // [Hz] pitch of the knock "ping"
+    constexpr double KnockRingDecay = 0.0015;         // [s]
+    constexpr double KnockRingGain = 60000.0;         // [Pa] audio amplitude per unit of severity
+}
+
 CombustionChamber::CombustionChamber() {
+    m_knockIntegral = 0.0;
+    m_knockCycleFactor = 1.0;
+    m_knockPIvc = 101325.0;
+    m_knockTIvc = 300.0;
+    m_knockActive = false;
+    m_knockFlameStarted = false;
+    m_knockFlameDone = false;
+    m_knockedThisCycle = false;
+    m_knockLevel = 0.0;
+    m_knockEvents = 0;
+    m_knockRingAmp = 0.0;
+    m_knockRingPhase = 0.0;
     m_crankcasePressure = 0.0;
     m_piston = nullptr;
     m_head = nullptr;
@@ -212,7 +239,7 @@ void CombustionChamber::ignite() {
         const double efficiencyAttenuation =
             (mixingFactor * rand_s + (1 - mixingFactor));
         m_flameEvent.efficiency =
-            efficiencyAttenuation * maxBurningEfficiency;
+            efficiencyAttenuation * maxBurningEfficiency * m_engine->getDamageEfficiencyFactor();
         m_flameEvent.flameSpeed = m_fuel->flameSpeed(
             turbulence,
             afr,
@@ -246,7 +273,7 @@ void CombustionChamber::flow(double dt) {
     const double dT = units::celcius(90.0) - m_system.temperature();
 
     m_system.changeEnergy(dT * cylinderSurfaceArea * 100 * dt);
-    m_system.flow(m_piston->getBlowbyK(), dt, m_crankcasePressure, units::celcius(25.0));
+    m_system.flow(m_piston->getBlowbyK() * m_engine->getDamageBlowbyFactor(), dt, m_crankcasePressure, units::celcius(25.0));
 
     Intake *intake = m_head->getIntake(m_piston->getCylinderIndex());
     ExhaustSystem *exhaust = m_head->getExhaustSystem(m_piston->getCylinderIndex());
@@ -352,6 +379,84 @@ void CombustionChamber::flow(double dt) {
 
         m_flameEvent.lastVolume = volume;
     }
+
+    updateKnock(dt);
+}
+
+void CombustionChamber::updateKnock(double dt) {
+    m_knockLevel *= std::exp(-dt / KnockLevelDecay);
+
+    const double octane = m_fuel->getOctane();
+    if (octane <= 0.0) return;                     // fuel without an octane number: no knock model
+
+    const double p = m_system.pressure();
+
+    if (m_intakeFlowRate > 1e-12) {
+        // Intake valve open: remember the state of the charge and start a new cycle
+        m_knockPIvc = std::fmax(p, 1.0);
+        m_knockTIvc = m_system.temperature();
+        m_knockIntegral = 0.0;
+        // sum of two uniform numbers: mostly near 1, now and then further off (like real cycle variation)
+        m_knockCycleFactor = 1.0 + KnockCycleScatter * (((double)rand() / RAND_MAX) + ((double)rand() / RAND_MAX) - 1.0);
+        m_knockActive = true;
+        m_knockFlameStarted = false;
+        m_knockFlameDone = false;
+        m_knockedThisCycle = false;
+        return;
+    }
+
+    if (!m_knockActive || m_knockFlameDone) return;
+
+    if (m_lit) {
+        m_knockFlameStarted = true;
+    }
+    else if (m_knockFlameStarted) {
+        m_knockFlameDone = true;                  // the flame has consumed the charge: no end gas left
+        return;
+    }
+
+    // Unburned gas temperature: isentropic compression of the charge from intake valve closing
+    const double pressureRatio = std::fmax(p / m_knockPIvc, 1.0);
+    const double unburnedTemperature =
+        (m_knockTIvc + KnockChargeHeating) * std::pow(pressureRatio, (KnockGamma - 1.0) / KnockGamma);
+
+    const double delay =
+        KnockDelayScale * m_knockCycleFactor * 17.68E-3
+        * std::pow(octane / 100.0, 3.402)
+        * std::pow(p / 101325.0, -1.7)
+        * std::exp(3800.0 / unburnedTemperature);
+
+    m_knockIntegral += dt / delay;
+
+    if (m_lit && !m_knockedThisCycle && m_knockIntegral >= 1.0) {
+        const double unburned = 1.0 - m_flameEvent.percentageLit;
+        if (unburned < 0.03) return;
+
+        // Knock: the end gas self-ignites. The more of it is left and the higher the pressure, the harder it hits.
+        const double severity = unburned * std::fmin(std::fmax(p / units::pressure(40.0, units::bar), 0.4), 3.0);
+
+        m_knockedThisCycle = true;
+        ++m_knockEvents;
+        m_knockLevel = std::fmax(m_knockLevel, severity);
+        m_knockRingAmp += severity * KnockRingGain;
+
+        m_flameEvent.flameSpeed *= KnockBurnBoost;                     // the rest burns almost at once: pressure spike
+        m_flameEvent.efficiency *= (1.0 - KnockEfficiencyLoss);        // and a good part of its energy is lost
+
+        m_engine->addKnockDamage(severity);
+    }
+}
+
+double CombustionChamber::popKnockRing(double dt, double sampleRate) {
+    if (m_knockRingAmp < 1.0) return 0.0;
+
+    const double frequency = std::fmin(KnockRingFrequency, 0.4 * sampleRate);
+    m_knockRingPhase += 2.0 * constants::pi * frequency * dt;
+    if (m_knockRingPhase > 2.0 * constants::pi) m_knockRingPhase -= 2.0 * constants::pi;
+
+    const double sample = m_knockRingAmp * std::sin(m_knockRingPhase);
+    m_knockRingAmp *= std::exp(-dt / KnockRingDecay);
+    return sample;
 }
 
 double CombustionChamber::lastEventAfr() const {

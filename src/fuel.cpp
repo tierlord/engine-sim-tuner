@@ -15,6 +15,7 @@ Fuel::Fuel() {
     m_maxTurbulenceEffect = 0.0;
     m_burningEfficiencyRandomness = 0.0;
     m_lowEfficiencyAttenuation = 0.0;
+    m_octane = 0.0;
 }
 
 Fuel::~Fuel() {
@@ -32,6 +33,7 @@ void Fuel::initialize(const Parameters &params) {
     m_maxDilutionEffect = params.maxDilutionEffect;
     m_maxTurbulenceEffect = params.maxTurbulenceEffect;
     m_lowEfficiencyAttenuation = params.lowEfficiencyAttenuation;
+    m_octane = params.octane;
 }
 
 double Fuel::flameSpeed(

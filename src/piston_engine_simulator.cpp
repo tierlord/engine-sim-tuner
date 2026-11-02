@@ -283,6 +283,8 @@ void PistonEngineSimulator::placeCylinder(int i) {
 void PistonEngineSimulator::simulateStep_() {
     const double timestep = getTimestep();
     IgnitionModule *im = m_engine->getIgnitionModule();
+    if (m_engine->isDestroyed()) im->m_enabled = false;
+    im->setLoadPressure(m_engine->getManifoldPressure());      // load axis of the ignition map
     im->update(timestep);
 
     const int cylinderCount = m_engine->getCylinderCount();
@@ -396,6 +398,8 @@ void PistonEngineSimulator::writeToSynthesizer() {
                 1.0 * (chamber->m_exhaustRunnerAndPrimary.pressure() - units::pressure(1.0, units::atm))
                 + 0.1 * chamber->m_exhaustRunnerAndPrimary.dynamicPressure(1.0, 0.0)
                 + 0.1 * chamber->m_exhaustRunnerAndPrimary.dynamicPressure(-1.0, 0.0));
+
+        exhaustFlow += attenuation_3 * 1600 * chamber->popKnockRing(timestep, getSimulationFrequency());
 
         lastValveLift[i] = head->exhaustValveLift(piston->getCylinderIndex());
 

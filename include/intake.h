@@ -51,6 +51,9 @@ class Intake : public Part {
         inline double getPlenumCrossSectionArea() const { return m_crossSectionArea; }
         inline double getVelocityDecay() const { return m_velocityDecay; }
 
+        // Safe to change while the simulation runs (read every step in process())
+        inline void setIdleThrottlePlatePosition(double p) { m_idleThrottlePlatePosition = p; }
+
         GasSystem m_system;
         double m_throttle;
 

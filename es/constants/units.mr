@@ -125,6 +125,7 @@ public node unit_names {
 
     // Power
     output hp: "hp";
+    output PS: "PS";
     output kW: "kW";
     output horsepower: hp;
     output kilowatt: kW;

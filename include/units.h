@@ -39,6 +39,7 @@ namespace units {
     extern constexpr double W = Nm / sec;
     extern constexpr double kW = W * 1000.0;
     extern constexpr double hp = 745.699872 * W;
+    extern constexpr double PS = 735.49875 * W;     // metric horsepower
 
     // Volume
     extern constexpr double m3 = 1.0;

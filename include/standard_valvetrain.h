@@ -22,6 +22,8 @@ public:
     virtual Camshaft *getActiveIntakeCamshaft() override;
     virtual Camshaft *getActiveExhaustCamshaft() override;
 
+    virtual void setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) override;
+
 private:
     Camshaft *m_intakeCamshaft;
     Camshaft *m_exhaustCamshaft;

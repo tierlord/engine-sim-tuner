@@ -6,6 +6,8 @@
 #include "../include/fuel.h"
 #include "../include/piston_engine_simulator.h"
 
+#include "../include/valvetrain.h"
+
 #include <cmath>
 #include <assert.h>
 
@@ -35,6 +37,8 @@ Engine::Engine() {
 
     m_throttle = nullptr;
     m_throttleValue = 0.0;
+    m_knockDamage = 0.0;
+    m_knockDamageEnabled = true;
 
     m_initialSimulationFrequency = 10000.0;
     m_initialHighFrequencyGain = 0.01;
@@ -150,6 +154,50 @@ void Engine::setThrottle(double throttle) {
     }
 
     m_throttleValue = throttle;
+}
+
+void Engine::addKnockDamage(double severity) {
+    if (!m_knockDamageEnabled) return;
+
+    // Light knock is harmless; above a threshold the damage grows linearly with the severity.
+    // (A damaged engine builds up less pressure and knocks less, so the damage must not fade out by itself.)
+    constexpr double HarmlessSeverity = 0.08;
+    constexpr double DamagePerSeverity = 0.0006;
+    m_knockDamage = std::fmin(m_knockDamage + DamagePerSeverity * std::fmax(severity - HarmlessSeverity, 0.0), 1.0);
+}
+
+double Engine::getKnockLevel() const {
+    double level = 0.0;
+    for (int i = 0; i < m_cylinderCount; ++i) {
+        level = std::fmax(level, m_combustionChambers[i].getKnockLevel());
+    }
+
+    return level;
+}
+
+bool Engine::hasHighLift() const {
+    for (int i = 0; i < m_cylinderBankCount; ++i) {
+        if (m_heads[i].getValvetrain()->hasHighLift()) return true;
+    }
+
+    return false;
+}
+
+bool Engine::isHighLiftActive() const {
+    for (int i = 0; i < m_cylinderBankCount; ++i) {
+        if (m_heads[i].getValvetrain()->isHighLiftActive()) return true;
+    }
+
+    return false;
+}
+
+long Engine::getKnockEventCount() const {
+    long count = 0;
+    for (int i = 0; i < m_cylinderCount; ++i) {
+        count += m_combustionChambers[i].getKnockEventCount();
+    }
+
+    return count;
 }
 
 double Engine::getThrottle() const {
