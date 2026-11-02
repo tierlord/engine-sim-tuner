@@ -191,21 +191,46 @@ function renderMap() {
 
             // The whole value is selected on entry, so the first keystroke replaces it
             cell.onfocus = () => cell.select();
-            // A click would place the caret after the focus event and drop that selection, so the click is taken over
+            // The click is taken over: a plain click picks one cell, SHIFT or dragging picks a range
             cell.onmousedown = e => {
-                if (document.activeElement === cell) return;
+                if (e.button !== 0) return;
                 e.preventDefault();
+                dragging = true;
+                if (e.shiftKey && selection) selection.end = [i, j];
+                else selection = { anchor: [i, j], end: [i, j] };
                 cell.focus();
                 cell.select();
+                showSelection();
+            };
+            cell.onmouseenter = () => {
+                if (!dragging || !selection) return;
+                selection.end = [i, j];
+                showSelection();
             };
             cell.onkeydown = e => {
                 if (e.key === 'Enter') { e.preventDefault(); commitCell(cell, index); return; }
+                if (e.key === 'PageUp' || e.key === 'PageDown') {
+                    e.preventDefault();
+                    adjustSelection((e.key === 'PageUp' ? 1 : -1) * selectionStep());
+                    return;
+                }
                 const step = ARROW_STEPS[e.key];
-                if (step) { e.preventDefault(); focusCell(i + step[0], j + step[1]); }
+                if (step) {
+                    e.preventDefault();
+                    const anchor = e.shiftKey && selection ? selection.anchor : [i + step[0], j + step[1]];
+                    const end = [i + step[0], j + step[1]];
+                    if (!cellAt(end[0], end[1])) return;           // outside the map: stay where we are
+                    selection = { anchor: e.shiftKey && selection ? selection.anchor : end, end };
+                    cellAt(end[0], end[1]).focus();
+                    showSelection();
+                }
             };
             grid.appendChild(cell);
         }
     }
+
+    selection = null;
+    showSelection();
 
     grid.appendChild(document.createElement('div'));
     map.rpm.forEach(r => { const l = document.createElement('div'); l.className = 'lab'; l.textContent = r; grid.appendChild(l); });
@@ -214,17 +239,56 @@ function renderMap() {
 // Arrow keys move through the map: [column (speed), row (load)]. Rows are drawn with high load on top.
 const ARROW_STEPS = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
 
-function focusCell(i, j) {
-    const target = document.querySelector(`#map-grid input[data-i="${i}"][data-j="${j}"]`);
-    if (target) target.focus();                       // outside the map: stay where we are
+const cellAt = (i, j) => document.querySelector(`#map-grid input[data-i="${i}"][data-j="${j}"]`);
+
+// Range selection: a rectangle between the anchor and the end cell, both given as [column, row]
+let selection = null;
+let dragging = false;
+document.addEventListener('mouseup', () => { dragging = false; });
+
+function selectedCells() {
+    if (!selection) return [];
+    const [i0, i1] = [selection.anchor[0], selection.end[0]].sort((a, b) => a - b);
+    const [j0, j1] = [selection.anchor[1], selection.end[1]].sort((a, b) => a - b);
+    const cells = [];
+    for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) { const c = cellAt(i, j); if (c) cells.push(c); }
+    return cells;
 }
 
-// ENTER accepts the typed value at once and sends it to the engine
+function showSelection() {
+    const chosen = new Set(selectedCells());
+    document.querySelectorAll('#map-grid input').forEach(c => c.classList.toggle('sel', chosen.size > 1 && chosen.has(c)));
+    $('sel-info').textContent = chosen.size > 1 ? `${chosen.size} Zellen markiert` : 'eine Zelle';
+}
+
+const selectionStep = () => Math.abs(+$('sel-step').value) || 1;
+
+function setCellValue(cell, value) {
+    const v = Math.round(value * 10) / 10;
+    map.adv[+cell.dataset.i * map.load.length + +cell.dataset.j] = v;
+    cell.value = v;
+    cell.style.background = cellColor(v);
+}
+
+// raise or lower the marked cells (or the single focused one) by the same amount
+function adjustSelection(delta) {
+    const cells = selectedCells();
+    if (!cells.length && document.activeElement && document.activeElement.dataset.i !== undefined) cells.push(document.activeElement);
+    cells.forEach(c => setCellValue(c, map.adv[+c.dataset.i * map.load.length + +c.dataset.j] + delta));
+    // setting a value drops the text selection, so the next typed number would be appended
+    const active = document.activeElement;
+    if (active && active.dataset && active.dataset.i !== undefined) active.select();
+    if (map.on) soon('map', pushMap, 150);
+}
+
+// ENTER accepts the typed value at once (for every marked cell) and sends it to the engine
 function commitCell(cell, index) {
     const value = parseFloat(cell.value);
     if (Number.isNaN(value)) cell.value = map.adv[index];   // empty or not a number: keep the old value
-    else { map.adv[index] = value; cell.value = value; }
-    cell.style.background = cellColor(+cell.value);
+    else {
+        const cells = selectedCells();
+        (cells.length > 1 ? cells : [cell]).forEach(c => setCellValue(c, value));
+    }
     if (map.on) pushMap();
     cell.select();
 }
@@ -232,6 +296,9 @@ function commitCell(cell, index) {
 function pushMap() {
     api.post('/tune', `map_rpm ${map.rpm.join(' ')}\nmap_load ${map.load.join(' ')}\nmap_adv ${map.adv.join(' ')}`);
 }
+
+$('sel-up').onclick = () => adjustSelection(selectionStep());
+$('sel-dn').onclick = () => adjustSelection(-selectionStep());
 
 $('map-on').onchange = () => {
     map.on = $('map-on').checked;
