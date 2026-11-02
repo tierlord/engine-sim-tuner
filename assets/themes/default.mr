@@ -5,8 +5,8 @@ public node use_default_theme {
     input start_fullscreen: false;
     input speed_units: units.mph;
     input pressure_units: units.inHg;
-    input torque_units: units.lb_ft;
-    input power_units: units.hp;
+    input torque_units: units.Nm;
+    input power_units: units.PS;
 
     set_application_settings(
         start_fullscreen: start_fullscreen,

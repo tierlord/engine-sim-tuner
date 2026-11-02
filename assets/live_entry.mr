@@ -1,0 +1,6 @@
+import "engine_sim.mr"
+import "themes/default.mr"
+import "engines/custom/live_engine.mr"
+
+use_default_theme()
+main()

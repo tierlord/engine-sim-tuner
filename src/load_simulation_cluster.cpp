@@ -136,6 +136,9 @@ void LoadSimulationCluster::update(float dt) {
         if (m_powerUnits == "hp") {
             ss << m_peakHorsepower << "hp @ " << m_peakHorsepowerRpm << "rpm";
         }
+        else if (m_powerUnits == "PS") {
+            ss << m_peakHorsepower << "PS @ " << m_peakHorsepowerRpm << "rpm";
+        }
         else {
             ss << m_peakHorsepower << "kW @ " << m_peakHorsepowerRpm << "rpm";
         }
@@ -280,7 +283,9 @@ void LoadSimulationCluster::updateHpAndTorque(float dt) {
         : (units::convert(torque, units::ft_lb));
     const double powerWithUnits = (m_powerUnits == "kW")
         ? (units::convert(power, units::kW))
-        : (units::convert(power, units::hp));
+        : (m_powerUnits == "PS")
+            ? (units::convert(power, units::PS))
+            : (units::convert(power, units::hp));
 
     m_filteredTorque = (1 - alpha) * m_filteredTorque + alpha * torqueWithUnits;
     m_filteredHorsepower = (1 - alpha) * m_filteredHorsepower + alpha * powerWithUnits;
@@ -327,6 +332,14 @@ void LoadSimulationCluster::setUnits(){
         m_hpGauge->m_unit = "hp";
         m_hpGauge->m_precision = 0;
 
+        m_hpGauge->m_gauge->m_min = 0;
+        m_hpGauge->m_gauge->m_max = 1000;
+        m_hpGauge->m_gauge->m_minorStep = 50;
+        m_hpGauge->m_gauge->m_majorStep = 100;
+    }
+    else if (m_powerUnits == "PS") {
+        m_hpGauge->m_unit = "PS";
+        m_hpGauge->m_precision = 0;
         m_hpGauge->m_gauge->m_min = 0;
         m_hpGauge->m_gauge->m_max = 1000;
         m_hpGauge->m_gauge->m_minorStep = 50;

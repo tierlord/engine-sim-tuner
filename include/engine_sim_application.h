@@ -17,15 +17,22 @@
 #include "synthesizer.h"
 #include "oscilloscope_cluster.h"
 #include "performance_cluster.h"
+#include "tuning_cluster.h"
 #include "load_simulation_cluster.h"
 #include "mixer_cluster.h"
 #include "info_cluster.h"
 #include "application_settings.h"
 #include "transmission.h"
+#include "live_server.h"
+#include "dyno_sweep.h"
 
 #include "delta.h"
 #include "dtv.h"
 
+#include <deque>
+#include <filesystem>
+#include <string>
+#include <map>
 #include <vector>
 
 class EngineSimApplication {
@@ -89,7 +96,15 @@ class EngineSimApplication {
         ApplicationSettings* getAppSettings() { return &m_applicationSettings; }
 
     protected:
-        void loadScript();
+        bool loadScript(
+            const std::string &path = "../assets/main.mr",
+            bool keepOnFailure = false);
+        bool reloadScript();
+        void toggleLiveReload();
+        void updateLiveReload(float dt);
+        std::string applyLiveTuning(const std::string &path);
+        std::string handleLiveRequest(const std::string &body);
+        std::string handleLiveRoute(const std::string &method, const std::string &path, const std::string &body);
         void processEngineInput();
         void renderScene();
 
@@ -144,12 +159,28 @@ class EngineSimApplication {
         OscilloscopeCluster *m_oscCluster;
         CylinderTemperatureGauge *m_temperatureGauge;
         PerformanceCluster *m_performanceCluster;
+        TuningCluster *m_tuningCluster;
         LoadSimulationCluster *m_loadSimulationCluster;
         MixerCluster *m_mixerCluster;
         InfoCluster *m_infoCluster;
         SimulationObject::ViewParameters m_viewParameters;
 
         bool m_paused;
+
+        // Live reload: watches the file written by tools/engine-builder.html
+        bool m_liveReload = false;
+        bool m_livePending = false;
+        float m_livePollTimer = 0.0f;
+        std::filesystem::file_time_type m_liveStamp;
+        DynoSweep m_dynoSweep;                 // automatic dyno run on the running simulator
+        LiveServer m_liveServer;               // lets tools/engine-builder.html push engines without a file picker
+        std::deque<std::vector<Function *>> m_liveLobes;   // cam lobes rebuilt by applyLiveTuning (the newest are in use)
+        std::string m_lastCamLow;                          // last "cam_low" / "cam_high" values, to skip identical updates
+        std::string m_lastCamHigh;
+        bool m_lastHighLift = false;                       // for the "CAM: HIGH LIFT" message
+        int m_lastRepairCounter = -1;          // "engine_repair" counter of the engine builder
+        std::string m_liveStructure;           // structure hash of the engine currently loaded in live mode
+        Function *m_liveTimingCurve = nullptr; // timing curve created by applyLiveTuning
 
     protected:
         void startRecording();

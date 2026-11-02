@@ -1,0 +1,56 @@
+#ifndef ATG_ENGINE_SIM_LIVE_SERVER_H
+#define ATG_ENGINE_SIM_LIVE_SERVER_H
+
+#include <atomic>
+#include <condition_variable>
+#include <cstdint>
+#include <functional>
+#include <mutex>
+#include <string>
+#include <thread>
+
+// Tiny HTTP server on 127.0.0.1 used by tools/engine-builder.html in live mode.
+//
+//   GET  /status     -> {"app":"engine-sim","live":true}
+//   POST /engine     -> body = engine script; answers with the JSON produced by the handler
+//   POST /dyno       -> starts a dyno run (body = "key=value" lines)
+//   POST /dyno/stop  -> aborts it
+//   GET  /dyno       -> progress and measured points
+//
+// Requests are handed to the main thread (poll()), so the simulation is only touched from there.
+class LiveServer {
+    public:
+        using Handler = std::function<std::string(
+            const std::string &method, const std::string &path, const std::string &body)>;
+
+        LiveServer();
+        ~LiveServer();
+
+        bool start(int port);
+        void stop();
+        bool isRunning() const { return m_running; }
+        int getPort() const { return m_port; }
+
+        // Call from the main thread every frame
+        void poll(const Handler &handler);
+
+    private:
+        void serve();
+        void handleConnection(uintptr_t client);
+
+        std::thread m_thread;
+        std::atomic<bool> m_running;
+        uintptr_t m_listenSocket;
+        int m_port;
+
+        std::mutex m_mutex;
+        std::condition_variable m_cv;
+        bool m_hasRequest;
+        bool m_hasResponse;
+        std::string m_requestMethod;
+        std::string m_requestPath;
+        std::string m_requestBody;
+        std::string m_responseBody;
+};
+
+#endif /* ATG_ENGINE_SIM_LIVE_SERVER_H */

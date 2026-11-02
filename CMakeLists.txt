@@ -48,6 +48,7 @@ add_library(engine-sim STATIC
     # Source files
     src/audio_buffer.cpp
     src/camshaft.cpp
+    src/cam_lobe.cpp
     src/crankshaft.cpp
     src/combustion_chamber.cpp
     src/connecting_rod.cpp
@@ -207,6 +208,8 @@ add_executable(engine-sim-app WIN32
     # Source files
     src/main.cpp
     src/engine_sim_application.cpp
+    src/live_server.cpp
+    src/dyno_sweep.cpp
     src/geometry_generator.cpp
     src/simulation_object.cpp
     src/piston_object.cpp
@@ -233,6 +236,7 @@ add_executable(engine-sim-app WIN32
     src/fuel_cluster.cpp
     src/oscilloscope_cluster.cpp
     src/performance_cluster.cpp
+    src/tuning_cluster.cpp
     src/firing_order_display.cpp
     src/load_simulation_cluster.cpp
     src/mixer_cluster.cpp
@@ -242,6 +246,8 @@ add_executable(engine-sim-app WIN32
     include/delta.h
     include/dtv.h
     include/engine_sim_application.h
+    include/live_server.h
+    include/dyno_sweep.h
     include/geometry_generator.h
     include/simulation_object.h
     include/piston_object.h
@@ -268,6 +274,7 @@ add_executable(engine-sim-app WIN32
     include/fuel_cluster.h
     include/oscilloscope_cluster.h
     include/performance_cluster.h
+    include/tuning_cluster.h
     include/firing_order_display.h
     include/load_simulation_cluster.h
     include/mixer_cluster.h
