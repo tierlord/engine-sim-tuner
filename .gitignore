@@ -10,3 +10,6 @@ compile_commands.json
 
 # Blender temporary files
 *.blend1
+
+# Personal engine written by the builder (live mode)
+assets/engines/custom/

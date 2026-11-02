@@ -1,0 +1,14 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 15ffad1..69c22cd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -322,8 +322,8 @@ target_link_libraries(delta-core PUBLIC
+     d3d11
+     ${D3DX_LIBS}/d3dx9.lib
+     ${D3DX_LIBS}/d3dx9d.lib
+-    ${D3DX_LIBS}/d3dx10d.lib
+     ${D3DX_LIBS}/d3dx10.lib
++    ${D3DX_LIBS}/d3dx10d.lib
+     ${D3DX_LIBS}/d3dx11.lib
+     ${D3DX_LIBS}/d3dx11d.lib
+     ${D3DX_LIBS}/d3dxof.lib
