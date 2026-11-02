@@ -212,109 +212,113 @@ if (DISCORD_ENABLED)
     )
 endif (DISCORD_ENABLED)
 
-add_executable(engine-sim-app WIN32
-    # Source files
-    src/main.cpp
-    src/engine_sim_application.cpp
-    src/live_server.cpp
-    src/dyno_sweep.cpp
-    src/simulation_session.cpp
-    src/geometry_generator.cpp
-    src/simulation_object.cpp
-    src/piston_object.cpp
-    src/connecting_rod_object.cpp
-    src/ui_element.cpp
-    src/ui_manager.cpp
-    src/cylinder_pressure_gauge.cpp
-    src/ui_math.cpp
-    src/gauge.cpp
-    src/crankshaft_object.cpp
-    src/cylinder_bank_object.cpp
-    src/cylinder_head_object.cpp
-    src/ui_button.cpp
-    src/ui_utilities.cpp
-    src/combustion_chamber_object.cpp
-    src/oscilloscope.cpp
-    src/shaders.cpp
-    src/engine_view.cpp
-    src/right_gauge_cluster.cpp
-    src/cylinder_temperature_gauge.cpp
-    src/labeled_gauge.cpp
-    src/throttle_display.cpp
-    src/afr_cluster.cpp
-    src/fuel_cluster.cpp
-    src/oscilloscope_cluster.cpp
-    src/performance_cluster.cpp
-    src/tuning_cluster.cpp
-    src/firing_order_display.cpp
-    src/load_simulation_cluster.cpp
-    src/mixer_cluster.cpp
-    src/info_cluster.cpp
+# The windowed application is Windows only. Linux builds the windowless server instead.
+if (WIN32)
+    add_executable(engine-sim-app WIN32
+        # Source files
+        src/main.cpp
+        src/engine_sim_application.cpp
+        src/live_server.cpp
+        src/dyno_sweep.cpp
+        src/simulation_session.cpp
+        src/geometry_generator.cpp
+        src/simulation_object.cpp
+        src/piston_object.cpp
+        src/connecting_rod_object.cpp
+        src/ui_element.cpp
+        src/ui_manager.cpp
+        src/cylinder_pressure_gauge.cpp
+        src/ui_math.cpp
+        src/gauge.cpp
+        src/crankshaft_object.cpp
+        src/cylinder_bank_object.cpp
+        src/cylinder_head_object.cpp
+        src/ui_button.cpp
+        src/ui_utilities.cpp
+        src/combustion_chamber_object.cpp
+        src/oscilloscope.cpp
+        src/shaders.cpp
+        src/engine_view.cpp
+        src/right_gauge_cluster.cpp
+        src/cylinder_temperature_gauge.cpp
+        src/labeled_gauge.cpp
+        src/throttle_display.cpp
+        src/afr_cluster.cpp
+        src/fuel_cluster.cpp
+        src/oscilloscope_cluster.cpp
+        src/performance_cluster.cpp
+        src/tuning_cluster.cpp
+        src/firing_order_display.cpp
+        src/load_simulation_cluster.cpp
+        src/mixer_cluster.cpp
+        src/info_cluster.cpp
 
-    # Include files
-    include/delta.h
-    include/dtv.h
-    include/engine_sim_application.h
-    include/live_server.h
-    include/dyno_sweep.h
-    include/simulation_session.h
-    include/geometry_generator.h
-    include/simulation_object.h
-    include/piston_object.h
-    include/connecting_rod_object.h
-    include/ui_element.h
-    include/ui_manager.h
-    include/cylinder_pressure_gauge.h
-    include/ui_math.h
-    include/units.h
-    include/crankshaft_object.h
-    include/cylinder_bank_object.h
-    include/cylinder_head_object.h
-    include/ui_button.h
-    include/ui_utilities.h
-    include/combustion_chamber_object.h
-    include/oscilloscope.h
-    include/shaders.h
-    include/engine_view.h
-    include/right_gauge_cluster.h
-    include/cylinder_temperature_gauge.h
-    include/labeled_gauge.h
-    include/throttle_display.h
-    include/afr_cluster.h
-    include/fuel_cluster.h
-    include/oscilloscope_cluster.h
-    include/performance_cluster.h
-    include/tuning_cluster.h
-    include/firing_order_display.h
-    include/load_simulation_cluster.h
-    include/mixer_cluster.h
-    include/info_cluster.h
-)
+        # Include files
+        include/delta.h
+        include/dtv.h
+        include/engine_sim_application.h
+        include/live_server.h
+        include/dyno_sweep.h
+        include/simulation_session.h
+        include/geometry_generator.h
+        include/simulation_object.h
+        include/piston_object.h
+        include/connecting_rod_object.h
+        include/ui_element.h
+        include/ui_manager.h
+        include/cylinder_pressure_gauge.h
+        include/ui_math.h
+        include/units.h
+        include/crankshaft_object.h
+        include/cylinder_bank_object.h
+        include/cylinder_head_object.h
+        include/ui_button.h
+        include/ui_utilities.h
+        include/combustion_chamber_object.h
+        include/oscilloscope.h
+        include/shaders.h
+        include/engine_view.h
+        include/right_gauge_cluster.h
+        include/cylinder_temperature_gauge.h
+        include/labeled_gauge.h
+        include/throttle_display.h
+        include/afr_cluster.h
+        include/fuel_cluster.h
+        include/oscilloscope_cluster.h
+        include/performance_cluster.h
+        include/tuning_cluster.h
+        include/firing_order_display.h
+        include/load_simulation_cluster.h
+        include/mixer_cluster.h
+        include/info_cluster.h
+    )
 
-target_link_libraries(engine-sim-app
-    engine-sim
-)
-
-if (DTV)
     target_link_libraries(engine-sim-app
-        direct-to-video)
-endif (DTV)
+        engine-sim
+    )
 
-if (PIRANHA_ENABLED)
-    target_link_libraries(engine-sim-app
-        engine-sim-script-interpreter)
-endif (PIRANHA_ENABLED)
+    if (DTV)
+        target_link_libraries(engine-sim-app
+            direct-to-video)
+    endif (DTV)
 
-if (DISCORD_ENABLED)
-    add_library(discord-rpc STATIC IMPORTED)
-    set_property(TARGET discord-rpc PROPERTY IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/dependencies/discord/lib/discord-rpc.lib)
-    target_link_libraries(engine-sim-app
-    	discord
-	discord-rpc)
-endif (DISCORD_ENABLED)
+    if (PIRANHA_ENABLED)
+        target_link_libraries(engine-sim-app
+            engine-sim-script-interpreter)
+    endif (PIRANHA_ENABLED)
 
-target_include_directories(engine-sim-app
-    PUBLIC dependencies/submodules)
+    if (DISCORD_ENABLED)
+        add_library(discord-rpc STATIC IMPORTED)
+        set_property(TARGET discord-rpc PROPERTY IMPORTED_LOCATION ${PROJECT_SOURCE_DIR}/dependencies/discord/lib/discord-rpc.lib)
+        target_link_libraries(engine-sim-app
+        	discord
+    	discord-rpc)
+    endif (DISCORD_ENABLED)
+
+    target_include_directories(engine-sim-app
+        PUBLIC dependencies/submodules)
+
+endif (WIN32)
 
 # Windowless server: the simulation, the sound (SDL audio) and the HTTP interface, no Delta Studio window
 find_package(SDL2 REQUIRED)

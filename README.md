@@ -85,7 +85,7 @@ If these steps are successful, a Visual Studio solution will be generated in ```
 
 ### Linux
 
-The Linux port uses SDL2 for the window, input and audio and OpenGL 4.3 for rendering. Its changes are kept as patches for the bundled submodules, so the submodules stay at their pinned commits.
+On Linux the simulator runs as the headless server `engine-sim-server`. It provides the simulation, the sound (SDL2 audio) and the web interface in the browser. The windowed application `engine-sim-app` is Windows only.
 
 1. Clone with submodules: `git clone --recurse-submodules https://github.com/ange-yaghi/engine-sim`
 2. Install the build dependencies (Debian/Ubuntu): `sudo apt install cmake libsdl2-dev libsdl2-image-dev libboost-filesystem-dev flex bison libgl-dev`
@@ -97,10 +97,10 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 ```
 
 ```bash
-cmake --build build --target engine-sim-app
+cmake --build build --target engine-sim-server
 ```
 
-5. Start the simulator from the `build` directory, because the asset paths are relative to it: `cd build && ./engine-sim-app`
+5. Start the server from the `build` directory, because the asset paths are relative to it: `cd build && ./engine-sim-server`. It opens the interface in the default browser. Use `--no-open` to skip that.
 
 Discord Rich Presence is disabled on Linux, the bundled `discord-rpc` library only exists for Windows.
 

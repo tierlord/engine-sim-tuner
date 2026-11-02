@@ -2,7 +2,6 @@
 
 #include <iostream>
 
-#ifdef _WIN32
 int WINAPI WinMain(
     _In_ HINSTANCE hInstance,
     _In_opt_ HINSTANCE hPrevInstance,
@@ -20,17 +19,3 @@ int WINAPI WinMain(
 
     return 0;
 }
-#else
-int main(int argc, char **argv)
-{
-    (void)argc;
-    (void)argv;
-
-    EngineSimApplication application;
-    application.initialize(nullptr, ysContextObject::DeviceAPI::OpenGL4_0);
-    application.run();
-    application.destroy();
-
-    return 0;
-}
-#endif
