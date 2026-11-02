@@ -2,6 +2,7 @@
 #define ATG_ENGINE_SIM_ENGINE_H
 
 #include "part.h"
+#include "turbo.h"
 
 #include "piston.h"
 #include "connecting_rod.h"
@@ -124,6 +125,7 @@ class Engine : public Part {
         Piston *getPiston(int i) const { return &m_pistons[i]; }
         ConnectingRod *getConnectingRod(int i) const { return &m_connectingRods[i]; }
         IgnitionModule *getIgnitionModule() { return &m_ignitionModule; }
+        Turbo *getTurbo() { return &m_turbo; }
         ExhaustSystem *getExhaustSystem(int i) const { return &m_exhaustSystems[i]; }
         Intake *getIntake(int i) const { return &m_intakes[i]; }
         CombustionChamber *getChamber(int i) const { return &m_combustionChambers[i]; }
@@ -170,6 +172,7 @@ class Engine : public Part {
         int m_intakeCount;
 
         IgnitionModule m_ignitionModule;
+        Turbo m_turbo;
         Fuel m_fuel;
 
         Throttle *m_throttle;

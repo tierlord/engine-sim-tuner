@@ -28,6 +28,7 @@
   <div class="tile"><label>Last (MAP)</label><div class="v"><span id="t-map">–</span> <small>kPa</small></div></div>
   <div class="tile"><label>Zündwinkel</label><div class="v"><span id="t-adv">–</span> <small>° v. OT</small></div></div>
   <div class="tile"><label>Drehmoment</label><div class="v"><span id="t-nm">–</span> <small id="t-ps"></small></div></div>
+  <div class="tile"><label>Lambda</label><div class="v" id="t-lambda-box"><span id="t-lambda">–</span></div></div>
   <div class="tile"><label>Motortemperatur</label><div class="v" id="t-temp-box"><span id="t-temp">–</span> <small>°C</small></div></div>
   <div class="tile"><label>Klopfen</label><div class="v" id="t-knock-box"><span id="t-knock">–</span> <small>%</small></div></div>
   <div class="tile"><label>Motorschaden</label><div class="v" id="t-dmg-box"><span id="t-dmg">–</span> <small>%</small></div></div>
@@ -38,10 +39,10 @@
 <div class="body">
   <nav class="only-tune" id="nav-tune">
     <a data-v="ign" class="act">Zündung</a>
-    <a data-v="fuel">Gemisch &amp; Kraftstoff <small>folgt</small></a>
+    <a data-v="fuel">Gemisch &amp; Kraftstoff</a>
     <a data-v="cam">Ventiltrieb</a>
     <a data-v="air">Ansaugung &amp; Abgas <small>später</small></a>
-    <a data-v="turbo">Aufladung <small>später</small></a>
+    <a data-v="turbo">Aufladung</a>
     <hr>
     <a data-v="dyno">Prüfstand &amp; Vergleich</a>
   </nav>
@@ -128,6 +129,38 @@
           <div class="bfield"><span>Einlass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-in" value="0" step="0.5"><input type="range" id="cam-in-r" min="-20" max="20" step="0.5" value="0"></div></div>
           <div class="bfield"><span>Auslass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-ex" value="0" step="0.5"><input type="range" id="cam-ex-r" min="-20" max="20" step="0.5" value="0"></div></div>
           <div class="sub" style="margin:8px 0 0">Hub und Dauer stehen vorerst im Bauen (Nockenfelder).</div>
+        </div>
+      </div>
+    </section>
+    <section id="v-fuel">
+      <h1>Gemisch &amp; Kraftstoff</h1>
+      <div class="sub">Lambda: Kraftstoffmenge je Luftmasse. 1,00 = stöchiometrisch, kleiner = fett (mehr Leistung, kühler, mehr Verbrauch), größer = mager (heißer, Klopfneigung). Die Zündung zündet nur zwischen 0,5 und 1,9.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Lambda <span class="live-tag">● live</span></span></h3>
+          <div class="bfield"><span>Soll-Lambda<small>Standard 0,80</small></span><div class="sliderbox"><input type="number" id="c-lambda" value="0.8" step="0.01"><input type="range" id="c-lambda-r" min="0.6" max="1.4" step="0.01" value="0.8"></div></div>
+        </div>
+      </div>
+    </section>
+    <section id="v-turbo">
+      <h1>Aufladung</h1>
+      <div class="sub">Abgasturbolader: Die Turbine im Auspuff treibt den Verdichter an. Sie staut das Abgas (Gegendruck) und braucht Zeit zum Hochdrehen (Turboloch). Das Wastegate öffnet beim Ladedruck-Sollwert, das Schubumluftventil entlastet den Lader beim Gaswegnehmen. Mehr Ladedruck braucht späteren Zündwinkel oder fetteres Lambda, sonst klopft der Motor.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Lader <span class="live-tag">● live</span></span></h3>
+          <label class="bfield"><span>Turbolader aktiv</span><input type="checkbox" id="tb-on"></label>
+          <div class="bfield"><span>Ladedruck-Soll (bar)<small>Überdruck, Wastegate öffnet hier</small></span><div class="sliderbox"><input type="number" id="tb-boost" step="0.05"><input type="range" id="tb-boost-r" min="0.1" max="2" step="0.05"></div></div>
+          <div class="bfield"><span>Turbinengröße<small>klein = früh, aber hoher Gegendruck</small></span><div class="sliderbox"><input type="number" id="tb-size" step="0.05"><input type="range" id="tb-size-r" min="0.15" max="1" step="0.05"></div></div>
+          <div class="bfield"><span>Trägheit<small>1 = mittlerer Lader, groß = mehr Turboloch</small></span><div class="sliderbox"><input type="number" id="tb-inertia" step="0.1"><input type="range" id="tb-inertia-r" min="0.2" max="4" step="0.1"></div></div>
+          <div class="bfield"><span>Ladeluftkühler<small>Anteil der Verdichtungswärme, der abgeführt wird</small></span><div class="sliderbox"><input type="number" id="tb-ic" step="0.05"><input type="range" id="tb-ic-r" min="0" max="1" step="0.05"></div></div>
+        </div>
+        <div class="card">
+          <h3><span>Zustand</span></h3>
+          <div class="bfield"><span>Ladedruck</span><b><span id="tb-t-boost">–</span> bar</b></div>
+          <div class="bfield"><span>Laderdrehzahl</span><b><span id="tb-t-rpm">–</span> /min</b></div>
+          <div class="bfield"><span>Wastegate</span><b><span id="tb-t-wg">–</span> %</b></div>
+          <div class="bfield"><span>Abgasgegendruck</span><b><span id="tb-t-back">–</span> ×</b></div>
+          <div class="bfield"><span>Schubumluftventil</span><b id="tb-t-bov">–</b></div>
         </div>
       </div>
     </section>

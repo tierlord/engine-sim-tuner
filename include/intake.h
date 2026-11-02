@@ -54,6 +54,13 @@ class Intake : public Part {
         // Safe to change while the simulation runs (read every step in process())
         inline void setIdleThrottlePlatePosition(double p) { m_idleThrottlePlatePosition = p; }
 
+        // Air in front of the throttle (turbo: boost pressure and charge temperature)
+        inline void setAmbient(double pressure, double temperature) { m_ambientPressure = pressure; m_ambientTemperature = temperature; }
+
+        // Target air-fuel ratio relative to stoichiometric (1.0 = stoich, <1 rich). Fuel is metered per air mass.
+        inline void setLambda(double l) { m_lambda = l; }
+        inline double getLambda() const { return m_lambda; }
+
         GasSystem m_system;
         double m_throttle;
 
@@ -68,6 +75,9 @@ class Intake : public Part {
         double m_runnerFlowRate;
         double m_molecularAfr;
         double m_idleThrottlePlatePosition;
+        double m_lambda = 0.8;
+        double m_ambientPressure = 101325.0;
+        double m_ambientTemperature = 298.15;
         double m_runnerLength;
         double m_velocityDecay;
 

@@ -313,6 +313,8 @@ void PistonEngineSimulator::simulateStep_() {
             m_engine->getIntake(j)->m_flowRate += m_engine->getIntake(j)->m_flow;
         }
 
+        m_engine->getTurbo()->step(m_engine, fluidTimestep);
+
         for (int j = 0; j < cylinderCount; ++j) {
             m_engine->getChamber(j)->flow(fluidTimestep);
         }

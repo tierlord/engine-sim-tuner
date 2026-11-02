@@ -10,12 +10,14 @@
 #include "../include/engine.h"
 
 #include <cmath>
+#include <algorithm>
 
 namespace {
     // Knock model constants. The ignition delay follows the common Douaud/Eyzat correlation for gasoline,
     // tau[ms] = 17.68 (RON/100)^3.402 p[atm]^-1.7 exp(3800/T), applied to the unburned gas (Livengood-Wu integral).
     constexpr double KnockGamma = 1.35;               // isentropic compression of the end gas
     constexpr double KnockChargeHeating = 85.0;       // [K] the simulated charge is colder at intake closing than a real one
+    constexpr double KnockLambdaHeating = 200.0;      // [K per unit lambda] leaner charge = less evaporation cooling, hotter end gas (0 at lambda 0.8)
     constexpr double KnockDelayScale = 1.0;           // overall scale of the ignition delay (calibration)
     constexpr double KnockCycleScatter = 0.12;        // +- scatter of the ignition delay from cycle to cycle (inhomogeneous charge)
     constexpr double KnockBurnBoost = 25.0;           // the end gas burns this much faster once it self-ignites
@@ -420,8 +422,11 @@ void CombustionChamber::updateKnock(double dt) {
 
     // Unburned gas temperature: isentropic compression of the charge from intake valve closing
     const double pressureRatio = std::fmax(p / m_knockPIvc, 1.0);
+    const GasSystem::Mix charge = m_system.mix();
+    const double lambda = charge.p_fuel > 0.0 ? charge.p_o2 / charge.p_fuel / m_fuel->getMolecularAfr() : 0.8;
+    const double lambdaHeating = KnockLambdaHeating * (std::clamp(lambda, 0.5, 1.6) - 0.8);
     const double unburnedTemperature =
-        (m_knockTIvc + KnockChargeHeating) * std::pow(pressureRatio, (KnockGamma - 1.0) / KnockGamma);
+        (m_knockTIvc + KnockChargeHeating + lambdaHeating) * std::pow(pressureRatio, (KnockGamma - 1.0) / KnockGamma);
 
     const double delay =
         KnockDelayScale * m_knockCycleFactor * 17.68E-3

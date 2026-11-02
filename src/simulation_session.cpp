@@ -525,14 +525,14 @@ std::string SimulationSession::telemetryJson() {
         return "{\"ok\":true,\"engine\":false}";
     }
 
-    char text[1600];
+    char text[2000];
     IgnitionModule *ignition = m_iceEngine->getIgnitionModule();
     std::snprintf(text, sizeof(text),
         "{\"ok\":true,\"engine\":true,\"name\":\"%s\",\"rpm\":%.1f,\"redline\":%.0f,"
         "\"throttle\":%.3f,\"map_kpa\":%.1f,\"advance_deg\":%.1f,\"torque_nm\":%.1f,\"power_kw\":%.2f,"
         "\"gear\":%d,\"clutch\":%.2f,\"speed_kmh\":%.1f,\"starter\":%s,\"ignition\":%s,"
         "\"dyno\":%s,\"dyno_hold\":%s,\"knock\":%.3f,\"knock_events\":%ld,\"damage\":%.3f,\"destroyed\":%s,"
-        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f,\"engine_temp\":%.1f}",
+        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f,\"engine_temp\":%.1f,\"lambda\":%.3f,\"turbo\":%s,\"turbo_rpm\":%.0f,\"boost_bar\":%.3f,\"wastegate\":%.2f,\"backpressure\":%.2f,\"blowoff\":%s}",
         jsonEscape(m_iceEngine->getName()).c_str(),
         m_iceEngine->getRpm(),
         units::toRpm(m_iceEngine->getRedline()),
@@ -558,7 +558,14 @@ std::string SimulationSession::telemetryJson() {
         m_dynoSweep.stateName(),
         m_dynoSweep.modeName(),
         ignition->getAdvanceOffset() / units::deg,
-        m_iceEngine->getWallTemperature() - units::celcius(0.0));
+        m_iceEngine->getWallTemperature() - units::celcius(0.0),
+        m_iceEngine->getIntakeCount() > 0 ? m_iceEngine->getIntake(0)->getLambda() : 0.0,
+        m_iceEngine->getTurbo()->settings().enabled ? "true" : "false",
+        m_iceEngine->getTurbo()->shaftRpm(),
+        m_iceEngine->getTurbo()->boostBar(),
+        m_iceEngine->getTurbo()->wastegate(),
+        m_iceEngine->getTurbo()->backPressureRatio(),
+        m_iceEngine->getTurbo()->blowOff() ? "true" : "false");
 
     return text;
 }
@@ -670,6 +677,14 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
         applied += " idle_throttle=" + std::to_string(v).substr(0, 6);
     }
 
+    if (number("lambda", &v)) {
+        v = std::clamp(v, 0.6, 1.4);
+        for (int i = 0; i < m_iceEngine->getIntakeCount(); ++i) {
+            m_iceEngine->getIntake(i)->setLambda(v);
+        }
+        applied += " lambda=" + std::to_string(v).substr(0, 5);
+    }
+
     if (number("rev_limit_rpm", &v)) {
         m_iceEngine->getIgnitionModule()->setRevLimit(units::rpm(v));
         applied += " rev_limit=" + std::to_string((int)v);
@@ -768,6 +783,21 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
             m_camCenterExhaust = std::clamp(exhaust, -30.0, 30.0);
             applyCamCenter();
             applied += " cam_center=" + std::to_string(m_camCenterIntake).substr(0, 5) + "/" + std::to_string(m_camCenterExhaust).substr(0, 5);
+        }
+    }
+
+    // Turbo: "enabled targetBoostBar turbineSize inertiaScale intercooler" (missing values keep the current ones)
+    const auto turboValues = values.find("turbo");
+    if (turboValues != values.end()) {
+        Turbo *turbo = m_iceEngine->getTurbo();
+        Turbo::Settings settings = turbo->settings();
+        std::stringstream ss(turboValues->second);
+        double enabled = 0;
+        if (ss >> enabled) {
+            settings.enabled = enabled > 0.5;
+            ss >> settings.targetBoost >> settings.turbineSize >> settings.inertiaScale >> settings.intercooler;
+            turbo->setSettings(settings);
+            applied += settings.enabled ? " turbo=on" : " turbo=off";
         }
     }
 

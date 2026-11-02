@@ -42,6 +42,9 @@ class ExhaustSystem : public Part {
 
         inline GasSystem *getSystem() { return &m_system; }
 
+        // Restriction of the outlet (turbine): 1 = open
+        inline void setOutletScale(double s) { m_outletScale = s; }
+
     protected:
         GasSystem m_atmosphere;
         GasSystem m_system;
@@ -53,6 +56,7 @@ class ExhaustSystem : public Part {
         double m_collectorCrossSectionArea;
         double m_primaryFlowRate;
         double m_outletFlowRate;
+        double m_outletScale = 1.0;
         double m_audioVolume;
         double m_velocityDecay;
         int m_index;

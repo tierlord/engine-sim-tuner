@@ -72,7 +72,7 @@ void ExhaustSystem::process(double dt) {
     flowParams.dt = dt;
     flowParams.system_0 = &m_atmosphere;
     flowParams.system_1 = &m_system;
-    flowParams.k_flow = m_outletFlowRate;
+    flowParams.k_flow = m_outletFlowRate * m_outletScale;
 
     m_flow = m_system.flow(flowParams);
 

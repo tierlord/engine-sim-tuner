@@ -10,10 +10,8 @@ import { initDyno } from './dyno.js';
 /* ------------------------------------------------------------------ views */
 
 const SOON = {
-    fuel: ['Gemisch & Kraftstoff', 'Lambda, Kraftstoffsorte, Klopfmodell und Reparatur. Lambda braucht zuerst eine Erweiterung im Simulator.'],
     cam: ['Ventiltrieb', 'Hub, Dauer und Lage von Ein- und Auslass im Betrieb, dazu die VTEC-Werte.'],
     air: ['Ansaugung & Abgas', 'Kommt später.'],
-    turbo: ['Aufladung', 'Kommt später.'],
 };
 
 let buildView = 'b-layout';
@@ -21,7 +19,7 @@ let buildView = 'b-layout';
 function show(view) {
     document.querySelectorAll('main section').forEach(s => s.classList.remove('act'));
     if (view.startsWith('b-')) buildView = view;
-    if (view === 'ign' || view === 'dyno' || view === 'cam' || view.startsWith('b-')) $('v-' + view).classList.add('act');
+    if (view === 'ign' || view === 'dyno' || view === 'cam' || view === 'fuel' || view === 'turbo' || view.startsWith('b-')) $('v-' + view).classList.add('act');
     else {
         $('soon-title').textContent = SOON[view][0];
         $('soon-text').textContent = SOON[view][1];
@@ -60,6 +58,12 @@ function onTelemetry(d) {
     $('t-adv').textContent = fmt(d.advance_deg);
     $('t-nm').textContent = fmt(d.torque_nm);
     $('t-ps').textContent = d.torque_nm !== 0 ? `Nm · ${fmt(d.power_kw * 1.35962)} PS` : 'Nm';
+    $('tb-t-boost').textContent = d.boost_bar.toFixed(2);
+    $('tb-t-rpm').textContent = fmt(d.turbo_rpm);
+    $('tb-t-wg').textContent = fmt(d.wastegate * 100);
+    $('tb-t-back').textContent = d.backpressure.toFixed(2);
+    $('tb-t-bov').textContent = d.blowoff ? 'offen' : 'zu';
+    $('t-lambda').textContent = d.lambda.toFixed(2);
     $('t-temp').textContent = fmt(d.engine_temp);
     $('t-temp-box').className = 'v ' + (d.engine_temp < 60 ? 'warn' : 'ok');
     $('t-knock').textContent = fmt(d.knock * 100);
@@ -115,6 +119,13 @@ async function loadTune() {
     setField('c-rev', tune.rev_limit_rpm !== undefined ? Number(tune.rev_limit_rpm) : 8000);
     setField('c-idlethr', tune.idle_throttle_plate_position !== undefined ? Number(tune.idle_throttle_plate_position) : 0.99);
     const cam = (tune.cam_center || '0 0').trim().split(/\s+/).map(Number);
+    const tb = (tune.turbo || '0 0.8 0.35 1 0.7').trim().split(/\s+/).map(Number);
+    $('tb-on').checked = tb[0] > 0.5;
+    setField('tb-boost', tb[1] ?? 0.8);
+    setField('tb-size', tb[2] ?? 0.35);
+    setField('tb-inertia', tb[3] ?? 1);
+    setField('tb-ic', tb[4] ?? 0.7);
+    setField('c-lambda', tune.lambda !== undefined ? Number(tune.lambda) : 0.8);
     setField('cam-in', cam[0] || 0);
     setField('cam-ex', cam[1] || 0);
 
@@ -142,6 +153,11 @@ linkField('c-idle', () => soon('curve', () => api.post('/tune', 'timing_curve ' 
 linkField('c-max', () => soon('curve', () => api.post('/tune', 'timing_curve ' + curveText())));
 linkField('c-rev', v => soon('rev', () => api.post('/tune', 'rev_limit_rpm ' + v)));
 linkField('c-idlethr', v => soon('idlethr', () => api.post('/tune', 'idle_throttle_plate_position ' + v)));
+const turboText = () => `turbo ${$('tb-on').checked ? 1 : 0} ${$('tb-boost').value} ${$('tb-size').value} ${$('tb-inertia').value} ${$('tb-ic').value}`;
+const sendTurbo = () => soon('turbo', () => api.post('/tune', turboText()), 120);
+$('tb-on').onchange = sendTurbo;
+['tb-boost', 'tb-size', 'tb-inertia', 'tb-ic'].forEach(id => linkField(id, sendTurbo));
+linkField('c-lambda', v => soon('lambda', () => api.post('/tune', 'lambda ' + v)));
 linkField('cam-in', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 linkField('cam-ex', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 

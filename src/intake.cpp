@@ -58,7 +58,7 @@ void Intake::destroy() {
 }
 
 void Intake::process(double dt) {
-    const double ideal_afr = 0.8 * m_molecularAfr * 4;
+    const double ideal_afr = m_lambda * m_molecularAfr * 4;
     const double current_afr = (m_system.mix().p_o2 + m_system.mix().p_inert) / m_system.mix().p_fuel;
 
     const double p_air = ideal_afr / (1 + ideal_afr);
@@ -67,7 +67,7 @@ void Intake::process(double dt) {
     fuelAirMix.p_inert = p_air * 0.75;
     fuelAirMix.p_o2 = p_air * 0.25;
 
-    const double idle_afr = 2.0;
+    const double idle_afr = 2.0 * (m_lambda / 0.8);
     const double p_idle_air = idle_afr / (1 + idle_afr);
     GasSystem::Mix fuelMix;
     fuelMix.p_fuel = (1.0 - p_idle_air);
@@ -84,13 +84,13 @@ void Intake::process(double dt) {
     flowParams.direction_y = -1.0;
     flowParams.dt = dt;
 
-    m_atmosphere.reset(units::pressure(1.0, units::atm), units::celcius(25.0), fuelAirMix);
+    m_atmosphere.reset(m_ambientPressure, m_ambientTemperature, fuelAirMix);
     flowParams.system_0 = &m_atmosphere;
     flowParams.system_1 = &m_system;
     flowParams.k_flow = flowAttenuation * m_inputFlowK;
     m_flow = m_system.flow(flowParams);
 
-    m_atmosphere.reset(units::pressure(1.0, units::atm), units::celcius(25.0), fuelMix);
+    m_atmosphere.reset(m_ambientPressure, m_ambientTemperature, fuelMix);
     flowParams.system_0 = &m_atmosphere;
     flowParams.system_1 = &m_system;
     flowParams.k_flow = m_idleFlowK;

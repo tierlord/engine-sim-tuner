@@ -78,6 +78,7 @@ add_library(engine-sim STATIC
     src/ignition_module.cpp
     src/impulse_response.cpp
     src/intake.cpp
+    src/turbo.cpp
     src/jitter_filter.cpp
     src/leveling_filter.cpp
     src/low_pass_filter.cpp
