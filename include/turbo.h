@@ -35,6 +35,7 @@ class Turbo {
         inline double boostBar() const { return (m_pressureRatio - 1.0) * 1.01325; }
         inline double wastegate() const { return m_wastegate; }
         inline bool blowOff() const { return m_blowOff; }
+        inline double activeTargetBoost() const { return m_activeTarget; }
         inline double backPressureRatio() const { return m_backPressureRatio; }
 
     private:
@@ -45,6 +46,7 @@ class Turbo {
         double m_backPressureRatio;
         double m_wastegate;
         bool m_blowOff;
+        double m_activeTarget = 0.8;
         bool m_applied;
 
         // sound state

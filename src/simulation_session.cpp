@@ -533,7 +533,7 @@ std::string SimulationSession::telemetryJson() {
         "\"throttle\":%.3f,\"map_kpa\":%.1f,\"advance_deg\":%.1f,\"torque_nm\":%.1f,\"power_kw\":%.2f,"
         "\"gear\":%d,\"clutch\":%.2f,\"speed_kmh\":%.1f,\"starter\":%s,\"ignition\":%s,"
         "\"dyno\":%s,\"dyno_hold\":%s,\"knock\":%.3f,\"knock_events\":%ld,\"damage\":%.3f,\"destroyed\":%s,"
-        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f,\"engine_temp\":%.1f,\"lambda\":%.3f,\"turbo\":%s,\"turbo_rpm\":%.0f,\"boost_bar\":%.3f,\"wastegate\":%.2f,\"backpressure\":%.2f,\"blowoff\":%s}",
+        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s,\"dyno_state\":\"%s\",\"dyno_mode\":\"%s\",\"advance_offset\":%.1f,\"engine_temp\":%.1f,\"lambda\":%.3f,\"turbo\":%s,\"turbo_rpm\":%.0f,\"boost_bar\":%.3f,\"wastegate\":%.2f,\"backpressure\":%.2f,\"blowoff\":%s,\"boost_target\":%.2f}",
         jsonEscape(m_iceEngine->getName()).c_str(),
         m_iceEngine->getRpm(),
         units::toRpm(m_iceEngine->getRedline()),
@@ -566,7 +566,8 @@ std::string SimulationSession::telemetryJson() {
         m_iceEngine->getTurbo()->boostBar(),
         m_iceEngine->getTurbo()->wastegate(),
         m_iceEngine->getTurbo()->backPressureRatio(),
-        m_iceEngine->getTurbo()->blowOff() ? "true" : "false");
+        m_iceEngine->getTurbo()->blowOff() ? "true" : "false",
+        m_iceEngine->getTurbo()->activeTargetBoost());
 
     return text;
 }
@@ -661,6 +662,12 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
         m_tuning.erase("map_rpm");
         m_tuning.erase("map_load");
         m_tuning.erase("map_adv");
+    }
+    for (const char *prefix : { "lambda_map", "boost_map" }) {
+        if (partial && values.count(std::string(prefix) + "_off")) {
+            for (const char *suffix : { "_rpm", "_load", "_val" }) m_tuning.erase(std::string(prefix) + suffix);
+        }
+        m_tuning.erase(std::string(prefix) + "_off");
     }
     m_tuning.erase("map_off");
     m_tuning.erase("repair");
@@ -895,6 +902,26 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
     else if ((!partial || values.count("map_off")) && ignition->hasTimingMap()) {
         ignition->clearTimingMap();
         applied += " ignition_map_off";
+    }
+
+    // Lambda map (speed x load) and boost target map (speed only); without a map the single values apply
+    {
+        const std::vector<double> lambdaSpeeds = numbers("lambda_map_rpm", 1.0);
+        const std::vector<double> lambdaLoads = numbers("lambda_map_load", 1000.0);
+        const std::vector<double> lambdaValues = numbers("lambda_map_val", 1.0);
+        if (!lambdaSpeeds.empty() && m_iceEngine->getLambdaMap()->set(lambdaSpeeds, lambdaLoads, lambdaValues)) applied += " lambda_map";
+        else if ((!partial || values.count("lambda_map_off")) && m_iceEngine->getLambdaMap()->valid()) {
+            m_iceEngine->getLambdaMap()->clear();
+            applied += " lambda_map_off";
+        }
+
+        const std::vector<double> boostSpeeds = numbers("boost_map_rpm", 1.0);
+        const std::vector<double> boostValues = numbers("boost_map_val", 1.0);
+        if (!boostSpeeds.empty() && m_iceEngine->getBoostMap()->set(boostSpeeds, { 0.0 }, boostValues)) applied += " boost_map";
+        else if ((!partial || values.count("boost_map_off")) && m_iceEngine->getBoostMap()->valid()) {
+            m_iceEngine->getBoostMap()->clear();
+            applied += " boost_map_off";
+        }
     }
 
     if (partial && values.count("repair")) {

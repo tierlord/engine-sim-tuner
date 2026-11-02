@@ -130,7 +130,10 @@ void Turbo::step(Engine *engine, double dt) {
 
     // --- wastegate: spring actuator, opens when the boost passes the target
     const double boost = boostBar();
-    const double wantedGate = std::clamp((boost - m_settings.targetBoost) / WastegateBand + 0.05, 0.0, 1.0);
+    m_activeTarget = engine->getBoostMap()->valid()
+        ? engine->getBoostMap()->sample(engine->getRpm(), 0.0)
+        : m_settings.targetBoost;
+    const double wantedGate = std::clamp((boost - m_activeTarget) / WastegateBand + 0.05, 0.0, 1.0);
     m_wastegate += (wantedGate - m_wastegate) * std::min(1.0, dt / WastegateLag);
 
     // --- results to the engine

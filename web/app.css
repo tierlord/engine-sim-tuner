@@ -4,7 +4,7 @@
     --red: #ee4445; --orange: #f4802a; --yellow: #fdbd2e; --blue: #77cee0; --green: #bdd869; --pink: #f394be;
   }
   * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; height: 100vh; display: grid; grid-template-rows: 52px 84px 1fr; overflow: hidden; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: clamp(12px, 0.68vw, 15px)/1.4 "Segoe UI", system-ui, sans-serif; height: 100vh; display: grid; grid-template-rows: 52px 84px 1fr; overflow: hidden; }
   header { display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
   .brand { font-weight: 700; letter-spacing: .3px; } .brand b { color: var(--orange); }
   .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; color: var(--dim); }
@@ -121,3 +121,42 @@ main { min-width: 0; }
 .run .sw { cursor: pointer; }
 .bar { margin: 8px 0; }
 #h-chart svg, #d-chart svg { display: block; }
+
+/* ----- Cockpit (Tunen): Tabelle und Schnellregler in der Mitte, Prüfstand fest unten ----- */
+body[data-mode=tune] .body { grid-template-columns: minmax(0, 1fr); }
+.cockpit { display: grid; grid-template-rows: minmax(0, 1fr) clamp(250px, 33vh, 440px); gap: 10px; padding: 10px 14px; min-height: 0; min-width: 0; }
+.cockpit .card { margin: 0; padding: 10px 12px; min-width: 0; min-height: 0; }
+.cockpit .card h3 { margin-bottom: 6px; align-items: center; gap: 10px; flex-wrap: wrap; }
+.mid { display: grid; grid-template-columns: minmax(0, 1fr) clamp(340px, 24vw, 470px); gap: 10px; min-height: 0; }
+.tablecard { display: flex; flex-direction: column; overflow: auto; }
+.tablecard .cell-grid { flex: 1 1 auto; min-height: 120px; }
+.quick { display: flex; flex-direction: column; gap: 8px; overflow: auto; min-height: 0; padding-right: 2px; }
+.quick .field { margin: 8px 0; }
+.quick details summary { cursor: pointer; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; font-size: 11px; }
+.quick details[open] summary { margin-bottom: 6px; }
+.dock { display: grid; grid-template-columns: minmax(0, 2.1fr) minmax(150px, .8fr) minmax(0, 1.1fr) minmax(300px, 1.25fr); gap: 10px; min-height: 0; }
+.dock .card { display: flex; flex-direction: column; overflow: hidden; }
+.dock .card > div:not(.ctlgrid):not(.readout):not(.bar) { min-height: 0; }
+.dynosheet svg, .holdcurve svg { width: 100%; height: 100%; max-height: 100%; }
+.dynosheet #d-chart, .holdcurve #h-chart { flex: 1 1 auto; min-height: 0; }
+.runs #d-runs { overflow: auto; flex: 1 1 auto; }
+.runs .run small { font-size: 10px; }
+.dynoctl { overflow: auto !important; }
+.ctlgrid { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin: 4px 0; }
+.ctlgrid > b { width: 58px; color: var(--orange); }
+.ctlgrid label { display: flex; align-items: center; gap: 5px; color: var(--dim); }
+.ctlgrid input[type=number], .ctlgrid select { width: 72px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 6px; font: inherit; }
+.ctlgrid input[type=range] { width: 110px; }
+.ctlgrid .btns { display: flex; gap: 6px; margin-left: auto; }
+.readout { display: flex; flex-wrap: wrap; gap: 4px 16px; align-items: baseline; margin-top: 4px; }
+.readout b { font-size: 1.5em; margin: 0 3px 0 6px; font-variant-numeric: tabular-nums; }
+.seg span { padding: 4px 14px; }
+.hint { margin-top: 4px; font-size: 11px; }
+.mapgrid .lab.col { cursor: pointer; }
+.mapgrid .lab.col:hover { color: var(--orange); }
+.quick select { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 6px; font: inherit; }
+.quick .field.off { opacity: .45; }
+.tablecard .cell-grid .mapgrid { height: 100%; max-height: 560px; }
+.mapgrid input { height: 100%; padding: 0; }
+.quick > * { flex: 0 0 auto; }
+.quick details.card { overflow: visible; }

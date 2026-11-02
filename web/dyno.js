@@ -153,6 +153,11 @@ export function initDyno(hooks) {
 
     /* ------------------------------------------------------------ measured runs */
 
+    // a damaged engine burns worse and would spoil the comparison: repair before every measurement (can be switched off)
+    try { $('d-repair').checked = localStorage.getItem('engineTunerAutoRepair') !== '0'; } catch (e) { /* ignore */ }
+    $('d-repair').addEventListener('change', () => { try { localStorage.setItem('engineTunerAutoRepair', $('d-repair').checked ? '1' : '0'); } catch (e) { /* ignore */ } });
+    const repairFirst = async () => { if ($('d-repair').checked) await api.post('/tune', 'repair 1'); };
+
     const setState = (text, color) => { $('d-state').textContent = text; $('d-state').style.color = color || '#8b95a1'; };
 
     async function poll() {
@@ -188,6 +193,7 @@ export function initDyno(hooks) {
             ? `mode=ramp\nstart=${$('d-start').value}\nend=0\nrate=${$('d-rate').value}\nthrottle=${throttle}`     // end=0: up to the rev limiter
             : `mode=steps\nstart=${$('d-start').value}\nend=${$('d-end').value}\nstep=${$('d-step').value}\nthrottle=${throttle}`;
         try {
+            await repairFirst();
             const answer = await api.post('/dyno', body);
             if (!answer.ok) { setState(answer.error, '#ff7b72'); return; }
             running = true; livePoints = []; setState('startet …'); updateButtons(); poll();
@@ -223,6 +229,7 @@ export function initDyno(hooks) {
     $('h-start').addEventListener('click', async () => {
         if (holdActive()) { await api.post('/dyno/stop', 'x'); return; }
         resetBins();
+        await repairFirst();
         const answer = await api.post('/dyno', `mode=hold\nstart=${$('h-rpm').value}\nthrottle=${Math.min(100, Math.max(0, +$('h-thr').value)) / 100}`);
         $('h-state').textContent = answer.ok ? 'Motor wird gestartet …' : answer.error;
     });
@@ -233,21 +240,7 @@ export function initDyno(hooks) {
     $('h-rpm-r').addEventListener('input', () => { $('h-rpm').value = $('h-rpm-r').value; holdChanged(); });
     $('h-thr').addEventListener('input', holdChanged);
 
-    const sendOffset = v => soon('offset', () => api.post('/tune', `advance_offset ${v}`), 60);
-    $('h-off').addEventListener('input', () => { $('h-off-r').value = $('h-off').value; sendOffset($('h-off').value); });
-    $('h-off-r').addEventListener('input', () => { $('h-off').value = $('h-off-r').value; sendOffset($('h-off-r').value); });
     $('h-reset').addEventListener('click', resetBins);
-
-    $('h-fold').addEventListener('click', async () => {
-        if (!tele) return;
-        const offset = +$('h-off').value;
-        if (offset === 0) { $('h-state').textContent = 'Der Versatz ist 0 – nichts zu übernehmen.'; return; }
-        const text = hooks.foldAdvance(offset, tele);
-        $('h-off').value = $('h-off-r').value = 0;
-        await api.post('/tune', 'advance_offset 0');
-        resetBins();
-        $('h-state').textContent = text;
-    });
 
     function drawAdvanceChart() {
         const W = 520, H = 230, L = 44, R = 12, T = 12, B = 30;
@@ -279,7 +272,7 @@ export function initDyno(hooks) {
         $('h-best').textContent = `Bisher am besten: ${best.nm.toFixed(0)} Nm bei ${best.adv.toFixed(1)}°`;
     }
 
-    let lastDraw = 0;
+    let lastDraw = 0, lastText = 0;
     function onTelemetry(d) {
         tele = d;
         if (!d.engine) return;
@@ -287,17 +280,16 @@ export function initDyno(hooks) {
         const active = holdActive();
         updateButtons();
 
-        if (document.activeElement !== $('h-off') && document.activeElement !== $('h-off-r')) {
-            $('h-off').value = d.advance_offset; $('h-off-r').value = d.advance_offset;
-        }
-
         if (active && d.dyno_state === 'running') {
             const target = +$('h-rpm').value;
             const steady = Math.abs(d.rpm - target) / target < 0.03;
-            ema = ema === null ? d.torque_nm : ema * 0.85 + d.torque_nm * 0.15;
-            $('h-nm').textContent = Math.round(ema);
-            $('h-ps').textContent = Math.round(ema * d.rpm * Math.PI / 30 / 735.49875);
-            $('h-adv').textContent = d.advance_deg.toFixed(1);
+            ema = ema === null ? d.torque_nm : ema * 0.95 + d.torque_nm * 0.05;
+            if (performance.now() - lastText > 250) {                // the numbers refresh ~4 times a second
+                lastText = performance.now();
+                $('h-nm').textContent = Math.round(ema);
+                $('h-ps').textContent = Math.round(ema * d.rpm * Math.PI / 30 / 735.49875);
+                $('h-adv').textContent = d.advance_deg.toFixed(1);
+            }
             $('h-state').textContent = steady ? `hält ${Math.round(d.rpm)} U/min` : `Drehzahl wird angefahren (${Math.round(d.rpm)}) …`;
 
             if (steady) {

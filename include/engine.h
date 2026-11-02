@@ -3,6 +3,7 @@
 
 #include "part.h"
 #include "turbo.h"
+#include "tuning_map.h"
 
 #include "piston.h"
 #include "connecting_rod.h"
@@ -126,6 +127,8 @@ class Engine : public Part {
         ConnectingRod *getConnectingRod(int i) const { return &m_connectingRods[i]; }
         IgnitionModule *getIgnitionModule() { return &m_ignitionModule; }
         Turbo *getTurbo() { return &m_turbo; }
+        TuningMap *getLambdaMap() { return &m_lambdaMap; }       // target lambda over speed and load (optional)
+        TuningMap *getBoostMap() { return &m_boostMap; }         // target boost [bar] over speed (optional)
         ExhaustSystem *getExhaustSystem(int i) const { return &m_exhaustSystems[i]; }
         Intake *getIntake(int i) const { return &m_intakes[i]; }
         CombustionChamber *getChamber(int i) const { return &m_combustionChambers[i]; }
@@ -173,6 +176,8 @@ class Engine : public Part {
 
         IgnitionModule m_ignitionModule;
         Turbo m_turbo;
+        TuningMap m_lambdaMap;
+        TuningMap m_boostMap;
         Fuel m_fuel;
 
         Throttle *m_throttle;

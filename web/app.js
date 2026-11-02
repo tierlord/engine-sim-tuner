@@ -9,22 +9,12 @@ import { initDyno } from './dyno.js';
 
 /* ------------------------------------------------------------------ views */
 
-const SOON = {
-    cam: ['Ventiltrieb', 'Hub, Dauer und Lage von Ein- und Auslass im Betrieb, dazu die VTEC-Werte.'],
-    air: ['Ansaugung & Abgas', 'Kommt später.'],
-};
-
 let buildView = 'b-layout';
 
-function show(view) {
-    document.querySelectorAll('main section').forEach(s => s.classList.remove('act'));
-    if (view.startsWith('b-')) buildView = view;
-    if (view === 'ign' || view === 'dyno' || view === 'cam' || view === 'fuel' || view === 'turbo' || view.startsWith('b-')) $('v-' + view).classList.add('act');
-    else {
-        $('soon-title').textContent = SOON[view][0];
-        $('soon-text').textContent = SOON[view][1];
-        $('v-soon').classList.add('act');
-    }
+function show(view) {                                   // build pages only; the tuning cockpit is one screen
+    document.querySelectorAll('main section').forEach(sec => sec.classList.remove('act'));
+    buildView = view;
+    $('v-' + view).classList.add('act');
     document.querySelectorAll('nav a').forEach(a => a.classList.toggle('act', a.dataset.v === view));
 }
 
@@ -32,22 +22,53 @@ function setMode(mode) {
     document.body.dataset.mode = mode;
     $('m-build').classList.toggle('act', mode === 'build');
     $('m-tune').classList.toggle('act', mode === 'tune');
-    show(mode === 'build' ? buildView : 'ign');
-    if (mode === 'build' && build) build.updateStale();
+    if (mode === 'build') { show(buildView); if (build) build.updateStale(); }
 }
 
 $('m-build').onclick = () => setMode('build');
 $('m-tune').onclick = () => setMode('tune');
-document.querySelectorAll('nav a').forEach(a => a.onclick = () => { if (!a.querySelector('small')?.textContent.includes('später')) show(a.dataset.v); });
+document.querySelectorAll('nav a').forEach(a => a.onclick = () => show(a.dataset.v));
 
 /* ------------------------------------------------------------------ live values */
 
 let last = null;
 const fmt = (v, d = 0) => Number.isFinite(v) ? v.toLocaleString('de-DE', { maximumFractionDigits: d, minimumFractionDigits: d }) : '–';
 
+// Smoothing of the readouts: the raw values swing with every engine cycle. Exponential filter with a time
+// constant chosen in the header; the numbers on screen refresh at ~5 Hz, the operating dot moves smoothly.
+const FILTER_KEYS = ['rpm', 'map_kpa', 'advance_deg', 'torque_nm', 'power_kw', 'boost_bar', 'turbo_rpm', 'wastegate', 'lambda', 'backpressure'];
+const FILTER_TAU = { off: 0, light: 0.25, medium: 0.6, strong: 1.2 };
+let filterMode = 'medium';
+try { filterMode = localStorage.getItem('engineTunerFilter') || 'medium'; } catch (e) { /* ignore */ }
+$('filter').value = filterMode;
+$('filter').onchange = () => { filterMode = $('filter').value; try { localStorage.setItem('engineTunerFilter', filterMode); } catch (e) { /* ignore */ } };
+let filtered = null, filteredAt = 0, shownAt = 0;
+
+function smoothed(d) {
+    const now = performance.now();
+    const tau = FILTER_TAU[filterMode] ?? 0.6;
+    if (!filtered || !d.engine || tau === 0) filtered = { ...d };
+    else {
+        const k = 1 - Math.exp(-(now - filteredAt) / 1000 / tau);
+        filtered = { ...d };
+        for (const key of FILTER_KEYS) filtered[key] = (smoothedPrev[key] ?? d[key]) + (d[key] - (smoothedPrev[key] ?? d[key])) * k;
+    }
+    filteredAt = now;
+    smoothedPrev = filtered;
+    return filtered;
+}
+let smoothedPrev = {};
+
 function onTelemetry(d) {
     last = d;
     if (typeof dyno !== 'undefined') dyno.onTelemetry(d);
+    d = smoothed(d);
+    if (d.engine && filterMode !== 'off') {
+        placeDot(d.rpm, d.map_kpa);
+        const now = performance.now();
+        if (now - shownAt < 200) return;
+        shownAt = now;
+    }
     $('engineName').textContent = d.engine ? `${d.name} · ${fmt(d.octane)} ROZ` : 'kein Motor';
     if (!d.engine) return;
 
@@ -58,11 +79,10 @@ function onTelemetry(d) {
     $('t-adv').textContent = fmt(d.advance_deg);
     $('t-nm').textContent = fmt(d.torque_nm);
     $('t-ps').textContent = d.torque_nm !== 0 ? `Nm · ${fmt(d.power_kw * 1.35962)} PS` : 'Nm';
-    $('tb-t-boost').textContent = d.boost_bar.toFixed(2);
-    $('tb-t-rpm').textContent = fmt(d.turbo_rpm);
-    $('tb-t-wg').textContent = fmt(d.wastegate * 100);
-    $('tb-t-back').textContent = d.backpressure.toFixed(2);
-    $('tb-t-bov').textContent = d.blowoff ? 'offen' : 'zu';
+    $('tb-line').textContent = d.turbo ? `${d.boost_bar.toFixed(2)} bar · ${fmt(d.turbo_rpm / 1000)}k/min · WG ${fmt(d.wastegate * 100)} %` : '';
+    $('tb-state').innerHTML = `<span>Ladedruck</span><b>${d.boost_bar.toFixed(2)} bar</b><span>Soll</span><b>${d.boost_target.toFixed(2)} bar</b><span>Laderdrehzahl</span><b>${fmt(d.turbo_rpm)} /min</b>`
+        + `<span>Wastegate</span><b>${fmt(d.wastegate * 100)} %</b><span>Abgasgegendruck</span><b>${d.backpressure.toFixed(2)} ×</b><span>Schubumluft</span><b>${d.blowoff ? 'offen' : 'zu'}</b>`;
+    if (document.activeElement !== $('tb-boost') && document.activeElement !== $('tb-boost-r')) $('q-boost-note').textContent = MAPS.boost.on ? `Kennfeld aktiv · gerade ${d.boost_target.toFixed(2)} bar` : 'Wastegate öffnet hier';
     $('t-lambda').textContent = d.lambda.toFixed(2);
     $('t-temp').textContent = fmt(d.engine_temp);
     $('t-temp-box').className = 'v ' + (d.engine_temp < 60 ? 'warn' : 'ok');
@@ -76,8 +96,6 @@ function onTelemetry(d) {
     $('ign').className = 'only-tune ' + (d.ignition ? 'on' : '');
     $('ign').textContent = d.ignition ? 'Zündung an' : 'Zündung aus';
     $('starter').className = 'only-tune ' + (d.starter ? 'on' : '');
-
-    $('kv').innerHTML = `<span>Gang</span><b>${d.gear || 'Leerlauf'}</b><span>Tempo</span><b>${fmt(d.speed_kmh)} km/h</b><span>Klopfereignisse</span><b>${fmt(d.knock_events)}</b>`;
 
     placeDot(d.rpm, d.map_kpa);
 }
@@ -109,7 +127,19 @@ $('ign').onclick = () => api.post('/control', `ignition=${last && last.ignition 
 /* ------------------------------------------------------------------ tuning state (server is the source of truth) */
 
 let tune = {};
-const map = { rpm: [], load: [], adv: [], on: false };
+
+// The tables: ignition (speed x load), lambda (speed x load) and boost target (speed only).
+// vals[speedIndex * load.length + loadIndex]; keys are the names used with POST /tune.
+const MAPS = {
+    ign: { keys: ['map_rpm', 'map_load', 'map_adv'], off: 'map_off 1', dec: 1, step: 0.5, stepDefault: 1, unit: '°', title: 'Zündwinkel in ° vor OT', rowDelta: -1,
+        color: v => v < 0 ? '#b3272a' : `hsl(${210 - Math.min(1, v / 50) * 170}, 55%, ${24 + Math.min(1, v / 50) * 14}%)` },
+    lambda: { keys: ['lambda_map_rpm', 'lambda_map_load', 'lambda_map_val'], off: 'lambda_map_off 1', dec: 2, step: 0.01, stepDefault: 0.02, unit: '', title: 'Soll-Lambda · kleiner = fetter', rowDelta: -0.03,
+        color: v => `hsl(${210 - Math.min(1, Math.max(0, (v - 0.7) / 0.5)) * 210}, 55%, 28%)` },
+    boost: { keys: ['boost_map_rpm', null, 'boost_map_val'], off: 'boost_map_off 1', dec: 2, step: 0.05, stepDefault: 0.1, unit: ' bar', title: 'Ladedruck-Soll in bar', single: true,
+        color: v => `hsl(${210 - Math.min(1, Math.max(0, v / 2)) * 190}, 55%, 28%)` },
+};
+Object.values(MAPS).forEach(m => Object.assign(m, { rpm: [], load: [], vals: [], on: false }));
+let map = MAPS.ign;                                     // the table that is shown
 
 async function loadTune() {
     try { tune = (await api.get('/tune')).values || {}; } catch (e) { tune = {}; }
@@ -129,10 +159,11 @@ async function loadTune() {
     setField('c-lambda', tune.lambda !== undefined ? Number(tune.lambda) : 0.8);
     setField('cam-in', cam[0] || 0);
     setField('cam-ex', cam[1] || 0);
+    if (tune.fuel_octane !== undefined) $('q-fuel').value = String(Math.round(Number(tune.fuel_octane)));
 
-    readMap();
+    readMaps();
     renderMap();
-    $('curve-card').style.opacity = map.on ? 0.5 : 1;
+    updateMapState();
 }
 
 function setField(id, value) { $(id).value = value; $(id + '-r').value = value; }
@@ -159,53 +190,83 @@ const sendTurbo = () => soon('turbo', () => api.post('/tune', turboText()), 120)
 $('tb-on').onchange = sendTurbo;
 ['tb-boost', 'tb-size', 'tb-inertia', 'tb-ic', 'tb-vol'].forEach(id => linkField(id, sendTurbo));
 linkField('c-lambda', v => soon('lambda', () => api.post('/tune', 'lambda ' + v)));
+$('repair').onclick = () => api.post('/tune', 'repair 1');
+$('q-fuel').innerHTML = [91, 95, 98, 100, 105].map(r => `<option value="${r}">ROZ ${r}</option>`).join('');
+$('q-fuel').onchange = () => api.post('/tune', 'fuel_octane ' + $('q-fuel').value);
 linkField('cam-in', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 linkField('cam-ex', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 
-/* ------------------------------------------------------------------ ignition map */
+/* ------------------------------------------------------------------ tables */
 
-function readMap() {
-    if (tune.map_rpm && tune.map_load && tune.map_adv && nums(tune.map_adv).length === nums(tune.map_rpm).length * nums(tune.map_load).length) {
-        Object.assign(map, { rpm: nums(tune.map_rpm), load: nums(tune.map_load), adv: nums(tune.map_adv), on: true });
-    } else {                                           // no map in the engine yet: start from the curve, switched off
-        const idle = +$('c-idle').value || 12, max = +$('c-max').value || 34;
-        const base = r => idle + (max - idle) * Math.min(1, r / 4000);
-        map.rpm = [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000];
-        map.load = [20, 40, 60, 80, 100];
-        map.adv = map.rpm.flatMap(r => map.load.map(l => Math.round((base(r) + (100 - l) * 0.25) * 10) / 10));
-        map.on = false;
+const round = (v, dec) => Math.round(v * 10 ** dec) / 10 ** dec;
+
+function readMaps() {
+    const idle = +$('c-idle').value || 12, max = +$('c-max').value || 34;
+    const base = r => idle + (max - idle) * Math.min(1, r / 4000);
+    const rpm = [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000], load = [20, 40, 60, 80, 100];
+
+    for (const [name, m] of Object.entries(MAPS)) {
+        const [kr, kl, kv] = m.keys;
+        const r = nums(tune[kr] || ''), v = nums(tune[kv] || '');
+        const l = m.single ? [0] : nums(tune[kl] || '');
+        if (r.length && l.length && v.length === r.length * l.length) {
+            Object.assign(m, { rpm: r, load: l, vals: v, on: true });
+        } else {                                       // no table in the engine yet: start from the single values, switched off
+            m.rpm = rpm; m.load = m.single ? [0] : load; m.on = false;
+            if (name === 'ign') m.vals = rpm.flatMap(x => load.map(y => round(base(x) + (100 - y) * 0.25, 1)));
+            else if (name === 'lambda') m.vals = rpm.flatMap(() => load.map(() => +$('c-lambda').value || 0.8));
+            else m.vals = rpm.map(() => +$('tb-boost').value || 0.8);
+        }
     }
-    $('map-on').checked = map.on;
 }
 
-const cellColor = v => v < 0 ? '#b3272a' : `hsl(${210 - Math.min(1, v / 50) * 170}, 55%, ${24 + Math.min(1, v / 50) * 14}%)`;
+function updateMapState() {
+    $('map-on').checked = map.on;
+    $('curve-card').style.opacity = MAPS.ign.on ? 0.5 : 1;
+    $('c-lambda').closest('.field').classList.toggle('off', MAPS.lambda.on);
+    $('q-lambda-note').textContent = MAPS.lambda.on ? 'Kennfeld aktiv – dieser Wert wird nicht verwendet' : 'gilt, wenn das Lambda-Kennfeld aus ist';
+    $('tb-boost').closest('.field').classList.toggle('off', MAPS.boost.on);
+}
+
+function setMap(name) {
+    map = MAPS[name];
+    document.querySelectorAll('#map-tabs span').forEach(t => t.classList.toggle('act', t.dataset.map === name));
+    $('map-title').textContent = map.title;
+    $('sel-step').value = map.stepDefault; $('sel-step').step = map.step; $('sel-step').min = map.step;
+    $('sel-unit').textContent = map.unit.trim();
+    $('axis-ctl').style.visibility = map.single ? 'hidden' : 'visible';
+    renderMap();
+    updateMapState();
+}
+document.querySelectorAll('#map-tabs span').forEach(t => { t.onclick = () => setMap(t.dataset.map); });
 
 function renderMap() {
     const grid = $('map-grid');
-    const columns = map.rpm.length;
-    const top = map.load[map.load.length - 1];
-    $('row-info').textContent = `bis ${top} kPa (${((top - 101.3) / 100).toFixed(2)} bar Ladedruck)`;
+    const columns = map.rpm.length, rows = map.load.length;
+    const top = map.load[rows - 1];
+    $('row-info').textContent = map.single ? '' : `bis ${top} kPa (${((top - 101.3) / 100).toFixed(2)} bar Ladedruck)`;
     grid.style.gridTemplateColumns = `56px repeat(${columns}, 1fr)`;
+    grid.style.gridTemplateRows = `repeat(${rows}, minmax(30px, 1fr)) 22px`;
     grid.innerHTML = '';
 
     // rows: load from high (top) to low (bottom); columns: speed from low to high
-    for (let j = map.load.length - 1; j >= 0; j--) {
+    for (let j = rows - 1; j >= 0; j--) {
         const label = document.createElement('div');
-        label.className = 'lab'; label.textContent = map.load[j] + ' kPa';
+        label.className = 'lab'; label.textContent = map.single ? 'Soll' : map.load[j] + ' kPa';
         grid.appendChild(label);
 
         for (let i = 0; i < columns; i++) {
             const cell = document.createElement('input');
-            cell.type = 'number'; cell.step = '1';
-            cell.value = map.adv[i * map.load.length + j];
-            cell.style.background = cellColor(+cell.value);
+            cell.type = 'number'; cell.step = String(map.step);
+            cell.value = map.vals[i * rows + j];
+            cell.style.background = map.color(+cell.value);
             cell.dataset.i = i; cell.dataset.j = j;
-            const index = i * map.load.length + j;
+            const index = i * rows + j;
             cell.oninput = () => {
                 if (cell.value === '') return;            // an empty field keeps the last value until ENTER decides
-                map.adv[index] = +cell.value;
-                cell.style.background = cellColor(+cell.value);
-                if (map.on) soon('map', pushMap, 150);
+                map.vals[index] = +cell.value;
+                cell.style.background = map.color(+cell.value);
+                if (map.on) soon('map', () => pushMap(map), 150);
             };
 
             // The whole value is selected on entry, so the first keystroke replaces it
@@ -236,7 +297,6 @@ function renderMap() {
                 const step = ARROW_STEPS[e.key];
                 if (step) {
                     e.preventDefault();
-                    const anchor = e.shiftKey && selection ? selection.anchor : [i + step[0], j + step[1]];
                     const end = [i + step[0], j + step[1]];
                     if (!cellAt(end[0], end[1])) return;           // outside the map: stay where we are
                     selection = { anchor: e.shiftKey && selection ? selection.anchor : end, end };
@@ -252,13 +312,19 @@ function renderMap() {
     showSelection();
 
     grid.appendChild(document.createElement('div'));
-    map.rpm.forEach(r => { const l = document.createElement('div'); l.className = 'lab'; l.textContent = r; grid.appendChild(l); });
+    map.rpm.forEach(r => {
+        const l = document.createElement('div');
+        l.className = 'lab col'; l.textContent = r; l.title = `Prüfstand „Halten“ auf ${r} U/min setzen`;
+        l.onclick = () => { $('h-rpm').value = r; $('h-rpm').dispatchEvent(new Event('input')); };
+        grid.appendChild(l);
+    });
 }
 
 // Arrow keys move through the map: [column (speed), row (load)]. Rows are drawn with high load on top.
 const ARROW_STEPS = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
 
 const cellAt = (i, j) => document.querySelector(`#map-grid input[data-i="${i}"][data-j="${j}"]`);
+const cellIndex = c => +c.dataset.i * map.load.length + +c.dataset.j;
 
 // Range selection: a rectangle between the anchor and the end cell, both given as [column, row]
 let selection = null;
@@ -280,60 +346,61 @@ function showSelection() {
     $('sel-info').textContent = chosen.size > 1 ? `${chosen.size} Zellen markiert` : 'eine Zelle';
 }
 
-const selectionStep = () => Math.abs(+$('sel-step').value) || 1;
+const selectionStep = () => Math.abs(+$('sel-step').value) || map.step;
 
 function setCellValue(cell, value) {
-    const v = Math.round(value * 10) / 10;
-    map.adv[+cell.dataset.i * map.load.length + +cell.dataset.j] = v;
+    const v = round(value, map.dec);
+    map.vals[cellIndex(cell)] = v;
     cell.value = v;
-    cell.style.background = cellColor(v);
+    cell.style.background = map.color(v);
 }
 
 // raise or lower the marked cells (or the single focused one) by the same amount
 function adjustSelection(delta) {
     const cells = selectedCells();
     if (!cells.length && document.activeElement && document.activeElement.dataset.i !== undefined) cells.push(document.activeElement);
-    cells.forEach(c => setCellValue(c, map.adv[+c.dataset.i * map.load.length + +c.dataset.j] + delta));
+    cells.forEach(c => setCellValue(c, map.vals[cellIndex(c)] + delta));
     // setting a value drops the text selection, so the next typed number would be appended
     const active = document.activeElement;
     if (active && active.dataset && active.dataset.i !== undefined) active.select();
-    if (map.on) soon('map', pushMap, 150);
+    if (map.on) soon('map', () => pushMap(map), 150);
 }
 
 // ENTER accepts the typed value at once (for every marked cell) and sends it to the engine
 function commitCell(cell, index) {
     const value = parseFloat(cell.value);
-    if (Number.isNaN(value)) cell.value = map.adv[index];   // empty or not a number: keep the old value
+    if (Number.isNaN(value)) cell.value = map.vals[index];   // empty or not a number: keep the old value
     else {
         const cells = selectedCells();
         (cells.length > 1 ? cells : [cell]).forEach(c => setCellValue(c, value));
     }
-    if (map.on) pushMap();
+    if (map.on) pushMap(map);
     cell.select();
 }
 
 // The load axis can grow beyond the ambient pressure for boosted engines: a new top row is a copy of the old one,
-// 1° later (more charge pressure wants less advance)
+// a little leaner/later or richer depending on the table (more charge pressure wants less advance and more fuel)
 function resizeLoadAxis(add) {
     const rows = map.load.length;
-    if (add ? rows >= 20 : rows <= 3) return;
+    if (map.single || (add ? rows >= 20 : rows <= 3)) return;
     const newRows = add ? rows + 1 : rows - 1;
-    const adv = [];
+    const vals = [];
     for (let i = 0; i < map.rpm.length; i++) {
         for (let j = 0; j < newRows; j++) {
-            adv.push(j < rows ? map.adv[i * rows + j] : Math.round((map.adv[i * rows + rows - 1] - 1) * 10) / 10);
+            vals.push(j < rows ? map.vals[i * rows + j] : round(map.vals[i * rows + rows - 1] + map.rowDelta, map.dec));
         }
     }
-    map.adv = adv;
+    map.vals = vals;
     if (add) map.load.push(map.load[rows - 1] + 20); else map.load.pop();
     renderMap();
-    if (map.on) pushMap();
+    if (map.on) pushMap(map);
 }
 $('row-add').onclick = () => resizeLoadAxis(true);
 $('row-del').onclick = () => resizeLoadAxis(false);
 
-function pushMap() {
-    api.post('/tune', `map_rpm ${map.rpm.join(' ')}\nmap_load ${map.load.join(' ')}\nmap_adv ${map.adv.join(' ')}`);
+function pushMap(m) {
+    const [kr, kl, kv] = m.keys;
+    api.post('/tune', `${kr} ${m.rpm.join(' ')}\n` + (kl ? `${kl} ${m.load.join(' ')}\n` : '') + `${kv} ${m.vals.join(' ')}`);
 }
 
 $('sel-up').onclick = () => adjustSelection(selectionStep());
@@ -341,8 +408,8 @@ $('sel-dn').onclick = () => adjustSelection(-selectionStep());
 
 $('map-on').onchange = () => {
     map.on = $('map-on').checked;
-    if (map.on) pushMap(); else api.post('/tune', 'map_off 1');
-    $('curve-card').style.opacity = map.on ? 0.5 : 1;
+    if (map.on) pushMap(map); else api.post('/tune', map.off);
+    updateMapState();
 };
 
 // position of the white dot: interpolate between the centres of the neighbouring cells
@@ -355,7 +422,7 @@ function fraction(axis, v) {
 
 function placeDot(rpm, kpa) {
     const dot = $('opdot');
-    if (!map.rpm.length || !$('v-ign').classList.contains('act')) { dot.classList.add('hidden'); return; }
+    if (!map.rpm.length || document.body.dataset.mode !== 'tune') { dot.classList.add('hidden'); return; }
 
     const [i0, i1, ti] = fraction(map.rpm, rpm), [j0, j1, tj] = fraction(map.load, kpa);
     const cell = (i, j) => $('map-grid').querySelector(`input[data-i="${i}"][data-j="${j}"]`);
@@ -366,23 +433,6 @@ function placeDot(rpm, kpa) {
     const x = cx(a) + (cx(cell(i1, j0)) - cx(a)) * ti, y = cy(a) + (cy(cell(i0, j1)) - cy(a)) * tj;
     dot.style.left = x + 'px'; dot.style.top = y + 'px';
     dot.classList.remove('hidden');
-}
-
-function foldAdvance(offset, d) {
-    const round = v => Math.round(v * 10) / 10;
-    if (map.on) {
-        const [i0, i1] = fraction(map.rpm, d.rpm), [j0, j1] = fraction(map.load, d.map_kpa);
-        const rows = map.load.length;
-        for (const i of new Set([i0, i1])) for (const j of new Set([j0, j1])) map.adv[i * rows + j] = round(map.adv[i * rows + j] + offset);
-        renderMap();
-        pushMap();
-        return `${offset > 0 ? '+' : ''}${offset}° im Kennfeld bei ${Math.round(d.rpm)} U/min und ${Math.round(d.map_kpa)} kPa übernommen.`;
-    }
-
-    setField('c-idle', round(+$('c-idle').value + offset));
-    setField('c-max', round(+$('c-max').value + offset));
-    api.post('/tune', 'timing_curve ' + curveText());
-    return `${offset > 0 ? '+' : ''}${offset}° in der Zündkurve übernommen (Leerlauf und Maximum).`;
 }
 
 /* ------------------------------------------------------------------ start */
@@ -396,9 +446,9 @@ const build = initBuild({
 const dyno = initDyno({
     getSnapshot: () => build.snapshot(),
     getTune: async () => { try { return (await api.get('/tune')).values || {}; } catch (e) { return {}; } },
-    foldAdvance,
 });
 
 setMode('tune');
+setMap('ign');
 connect();
 setTimeout(() => { if (!(last && last.engine)) setMode('build'); }, 1500);

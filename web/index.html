@@ -18,8 +18,7 @@
   <div class="grow"></div>
   <div class="ctl only-tune">Gas <input id="gas" type="range" min="0" max="100" value="0" title="Gaspedal"> <b id="gasv" style="color:var(--text);width:38px">0 %</b></div>
   <button id="starter" class="only-tune" title="Gedrückt halten">Starter (halten)</button>
-  <button id="cold" class="only-tune" title="Motor auf Umgebungstemperatur setzen">Kalt</button>
-  <button id="warm" class="only-tune" title="Motor auf Betriebstemperatur setzen">Warm</button>
+  <label class="ctl only-tune" title="Glättung der Anzeigewerte">Filter <select id="filter"><option value="off">aus</option><option value="light">leicht</option><option value="medium">mittel</option><option value="strong">stark</option></select></label>
   <button id="ign" class="only-tune">Zündung</button>
 </header>
 
@@ -37,15 +36,6 @@
 <div class="live only-build" id="build-bar"></div>
 
 <div class="body">
-  <nav class="only-tune" id="nav-tune">
-    <a data-v="ign" class="act">Zündung</a>
-    <a data-v="fuel">Gemisch &amp; Kraftstoff</a>
-    <a data-v="cam">Ventiltrieb</a>
-    <a data-v="air">Ansaugung &amp; Abgas <small>später</small></a>
-    <a data-v="turbo">Aufladung</a>
-    <hr>
-    <a data-v="dyno">Prüfstand &amp; Vergleich</a>
-  </nav>
   <nav class="only-build" id="nav-build">
     <a data-v="b-layout" class="act">Anordnung</a>
     <a data-v="b-size">Hubraum &amp; Verdichtung</a>
@@ -56,117 +46,7 @@
     <a data-v="b-car">Fahrzeug</a>
   </nav>
 
-  <main>
-    <section id="v-ign" class="act">
-      <h1>Zündung</h1>
-      <div class="sub">Der weiße Punkt zeigt, wo der Motor gerade im Kennfeld arbeitet. Änderungen wirken sofort.</div>
-      <div class="cols">
-        <div class="card">
-          <h3><span>Zündkennfeld · Zündwinkel in ° vor OT <span class="live-tag">● live</span></span><span><label><input type="checkbox" id="map-on"> aktiv</label></span></h3>
-          <div class="cell-grid" id="map-wrap"><div class="mapgrid" id="map-grid"></div><div class="opdot hidden" id="opdot"></div></div>
-          <div class="selbar"><span>Lastachse</span><button id="row-add" title="Zeile für höheren Druck oben anfügen (+20 kPa)">+ Ladedruck-Zeile</button><button id="row-del" title="Oberste Zeile entfernen">− oberste Zeile</button><span class="grow"></span><span id="row-info"></span></div>
-          <div class="selbar"><span id="sel-info">eine Zelle</span><span class="grow"></span>Schritt <input type="number" id="sel-step" value="1" step="0.5" min="0.5"> °
-            <button id="sel-dn" title="Auswahl senken (Bild↓)">−</button><button id="sel-up" title="Auswahl erhöhen (Bild↑)">+</button></div>
-          <div class="sub" style="margin:8px 0 0">Zahl eintippen + Enter · Pfeiltasten wechseln die Zelle · Ziehen oder Umschalt+Klick/Pfeil markiert einen Bereich · Bild↑/Bild↓ ändert die Auswahl · rot = sehr spät, blau = früh · Spalten: Drehzahl, Zeilen: Last</div>
-        </div>
-        <div>
-          <div class="card" id="curve-card">
-            <h3><span>Zündkurve (ohne Kennfeld)</span></h3>
-            <div class="field"><span>Leerlauf (°)<span class="live-tag">● live</span></span><input type="number" id="c-idle" step="0.5"><input type="range" id="c-idle-r" min="0" max="45" step="0.5"></div>
-            <div class="field"><span>Maximum ab 4 000 U/min (°)<span class="live-tag">● live</span></span><input type="number" id="c-max" step="0.5"><input type="range" id="c-max-r" min="0" max="50" step="0.5"></div>
-          </div>
-          <div class="card">
-            <h3><span>Begrenzer &amp; Start</span></h3>
-            <div class="field"><span>Drehzahlbegrenzer (U/min)<span class="live-tag">● live</span></span><input type="number" id="c-rev" step="100"><input type="range" id="c-rev-r" min="3000" max="14000" step="100"></div>
-            <div class="field"><span>Leerlauf-Drosselstellung<span class="live-tag">● live</span></span><input type="number" id="c-idlethr" step="0.001"><input type="range" id="c-idlethr-r" min="0.9" max="1" step="0.001"></div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="v-dyno">
-      <h1>Prüfstand &amp; Vergleich</h1>
-      <div class="sub">Messläufe auf dem laufenden Simulator – du hörst den Motor dabei. Mit der Maus über einem Lauf blendet das Diagramm die anderen aus.</div>
-      <div class="cols" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr)">
-        <div class="card">
-          <h3><span>Messlauf</span><span id="d-state" class="note"></span></h3>
-          <div class="bfield"><span>Art</span><select id="d-mode"><option value="ramp">Beschleunigung bis Begrenzer</option><option value="steps">Stufen (Drehzahl halten)</option></select></div>
-          <div class="bfield"><span>Startdrehzahl (U/min)</span><input type="number" id="d-start" value="2000" step="100"></div>
-          <div id="d-ramp-only" style="display:contents"><div class="bfield"><span>Tempo (U/min je s)</span><input type="number" id="d-rate" value="500" step="50"></div></div>
-          <div id="d-steps-only" style="display:none"><div class="bfield"><span>Enddrehzahl (U/min)</span><input type="number" id="d-end" value="6500" step="100"></div>
-            <div class="bfield"><span>Schritt (U/min)</span><input type="number" id="d-step" value="500" step="50"></div></div>
-          <div class="bfield"><span>Gas (%)</span><input type="number" id="d-thr" value="100" min="0" max="100"></div>
-          <div class="row"><button class="primary" id="d-run">▶ Messlauf starten</button><button id="d-stop" disabled>Abbrechen</button></div>
-          <div class="bar" id="d-bar" style="display:none"><span style="width:0"></span></div>
-        </div>
-        <div class="card">
-          <h3><span>Drehzahl halten (Volllast)</span><span id="h-state" class="note"></span></h3>
-          <div class="note" style="margin-bottom:6px">Der Motor wird gestartet und auf einer Drehzahl gehalten. Verstelle den Zündwinkel und lies das Drehmoment ab.</div>
-          <div class="bfield"><span>Drehzahl (U/min)</span><div class="sliderbox"><input type="number" id="h-rpm" value="4000" step="100"><input type="range" id="h-rpm-r" min="1000" max="9000" step="100" value="4000"></div></div>
-          <div class="bfield"><span>Gas (%)</span><input type="number" id="h-thr" value="100" min="0" max="100"></div>
-          <div class="row"><button id="h-start">Halten starten</button></div>
-          <div class="kv" style="grid-template-columns:repeat(3,1fr);text-align:center;margin:10px 0">
-            <div><div class="note">Drehmoment</div><b style="font-size:22px"><span id="h-nm">–</span></b> <span class="note">Nm</span></div>
-            <div><div class="note">Leistung</div><b style="font-size:22px"><span id="h-ps">–</span></b> <span class="note">PS</span></div>
-            <div><div class="note">Zündwinkel</div><b style="font-size:22px"><span id="h-adv">–</span></b> <span class="note">°</span></div>
-          </div>
-          <div class="bfield"><span>Zündwinkel-Versatz (°)<span class="live-tag">● live</span><small>wird zur Kurve oder zum Kennfeld addiert</small></span><div class="sliderbox"><input type="number" id="h-off" value="0" step="0.5"><input type="range" id="h-off-r" min="-20" max="20" step="0.5" value="0"></div></div>
-          <div id="h-chart"></div>
-          <div class="row"><span id="h-best" class="note"></span><span class="grow"></span><button id="h-reset" title="Messpunkte der Kurve verwerfen">Kurve zurücksetzen</button><button id="h-fold" title="Addiert den Versatz zu Kennfeld oder Kurve und setzt ihn auf 0">Versatz übernehmen</button></div>
-        </div>
-      </div>
-      <div class="cols" style="grid-template-columns:minmax(0,2fr) minmax(0,1fr)">
-        <div class="card"><h3><span>Drehmoment (Nm) und Leistung (PS)</span><span class="note">━ Nm &nbsp; ┅ PS &nbsp; <span style="color:var(--red)">●</span> Klopfen &nbsp; ┆ Nockenumschaltung</span></h3><div id="d-chart"></div></div>
-        <div class="card runs"><h3><span>Läufe</span></h3><div id="d-runs"></div></div>
-      </div>
-    </section>
-
-    <section id="v-cam">
-      <h1>Ventiltrieb</h1>
-      <div class="sub">Lage der Nockenwellen (Mittellinie) live verschieben. Der Versatz gilt relativ zur Motordatei. Positiv öffnen die Ventile später, negativ früher.</div>
-      <div class="cols">
-        <div class="card">
-          <h3><span>Lage · Grad Kurbelwelle <span class="live-tag">● live</span></span></h3>
-          <div class="bfield"><span>Einlass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-in" value="0" step="0.5"><input type="range" id="cam-in-r" min="-20" max="20" step="0.5" value="0"></div></div>
-          <div class="bfield"><span>Auslass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-ex" value="0" step="0.5"><input type="range" id="cam-ex-r" min="-20" max="20" step="0.5" value="0"></div></div>
-          <div class="sub" style="margin:8px 0 0">Hub und Dauer stehen vorerst im Bauen (Nockenfelder).</div>
-        </div>
-      </div>
-    </section>
-    <section id="v-fuel">
-      <h1>Gemisch &amp; Kraftstoff</h1>
-      <div class="sub">Lambda: Kraftstoffmenge je Luftmasse. 1,00 = stöchiometrisch, kleiner = fett (mehr Leistung, kühler, mehr Verbrauch), größer = mager (heißer, Klopfneigung). Die Zündung zündet nur zwischen 0,5 und 1,9.</div>
-      <div class="cols">
-        <div class="card">
-          <h3><span>Lambda <span class="live-tag">● live</span></span></h3>
-          <div class="bfield"><span>Soll-Lambda<small>Standard 0,80</small></span><div class="sliderbox"><input type="number" id="c-lambda" value="0.8" step="0.01"><input type="range" id="c-lambda-r" min="0.6" max="1.4" step="0.01" value="0.8"></div></div>
-        </div>
-      </div>
-    </section>
-    <section id="v-turbo">
-      <h1>Aufladung</h1>
-      <div class="sub">Abgasturbolader: Die Turbine im Auspuff treibt den Verdichter an. Sie staut das Abgas (Gegendruck) und braucht Zeit zum Hochdrehen (Turboloch). Das Wastegate öffnet beim Ladedruck-Sollwert, das Schubumluftventil entlastet den Lader beim Gaswegnehmen. Mehr Ladedruck braucht späteren Zündwinkel oder fetteres Lambda, sonst klopft der Motor.</div>
-      <div class="cols">
-        <div class="card">
-          <h3><span>Lader <span class="live-tag">● live</span></span></h3>
-          <label class="bfield"><span>Turbolader aktiv</span><input type="checkbox" id="tb-on"></label>
-          <div class="bfield"><span>Ladedruck-Soll (bar)<small>Überdruck, Wastegate öffnet hier</small></span><div class="sliderbox"><input type="number" id="tb-boost" step="0.05"><input type="range" id="tb-boost-r" min="0.1" max="2" step="0.05"></div></div>
-          <div class="bfield"><span>Turbinengröße<small>klein = früh, aber hoher Gegendruck</small></span><div class="sliderbox"><input type="number" id="tb-size" step="0.05"><input type="range" id="tb-size-r" min="0.15" max="1" step="0.05"></div></div>
-          <div class="bfield"><span>Trägheit<small>1 = mittlerer Lader, groß = mehr Turboloch</small></span><div class="sliderbox"><input type="number" id="tb-inertia" step="0.1"><input type="range" id="tb-inertia-r" min="0.2" max="4" step="0.1"></div></div>
-          <div class="bfield"><span>Ladeluftkühler<small>Anteil der Verdichtungswärme, der abgeführt wird</small></span><div class="sliderbox"><input type="number" id="tb-ic" step="0.05"><input type="range" id="tb-ic-r" min="0" max="1" step="0.05"></div></div>
-          <div class="bfield"><span>Lautstärke Turbogeräusch<small>Pfeifen, Summen, Luftrauschen, Schubumluft</small></span><div class="sliderbox"><input type="number" id="tb-vol" step="0.1"><input type="range" id="tb-vol-r" min="0" max="3" step="0.1"></div></div>
-        </div>
-        <div class="card">
-          <h3><span>Zustand</span></h3>
-          <div class="bfield"><span>Ladedruck</span><b><span id="tb-t-boost">–</span> bar</b></div>
-          <div class="bfield"><span>Laderdrehzahl</span><b><span id="tb-t-rpm">–</span> /min</b></div>
-          <div class="bfield"><span>Wastegate</span><b><span id="tb-t-wg">–</span> %</b></div>
-          <div class="bfield"><span>Abgasgegendruck</span><b><span id="tb-t-back">–</span> ×</b></div>
-          <div class="bfield"><span>Schubumluftventil</span><b id="tb-t-bov">–</b></div>
-        </div>
-      </div>
-    </section>
-    <section id="v-soon"><h1 id="soon-title">–</h1><div class="card note" id="soon-text"></div></section>
+  <main class="only-build">
     <section id="v-b-layout" class="bsec">
       <h1>Anordnung</h1>
       <div class="sub">Wähle eine Grundform. Bänke und Kurbelzapfen lassen sich in der Grafik frei verschieben. Alles im Bauen lädt den Motor neu.</div>
@@ -204,10 +84,84 @@
     <div id="hidden-fields" class="hidden"></div>
   </main>
 
-  <aside class="only-tune">
-    <div class="card" style="margin:0"><h3><span>Verbindung</span></h3><div class="kv" id="kv"></div></div>
-    <div class="hint note">Motoransicht, Zündfolge und Abgasströmung folgen in dieser Spalte.</div>
-  </aside>
+  <div class="cockpit only-tune">
+    <div class="mid">
+      <section class="card tablecard">
+        <h3>
+          <span class="seg" id="map-tabs"><span data-map="ign" class="act">Zündung</span><span data-map="lambda">Lambda</span><span data-map="boost">Ladedruck</span></span>
+          <span id="map-title" class="note"></span>
+          <span><label><input type="checkbox" id="map-on"> Kennfeld aktiv</label> <span class="live-tag">● live</span></span>
+        </h3>
+        <div class="cell-grid" id="map-wrap"><div class="mapgrid" id="map-grid"></div><div class="opdot hidden" id="opdot"></div></div>
+        <div class="selbar"><span id="axis-ctl"><span>Lastachse</span> <button id="row-add" title="Zeile für höheren Druck oben anfügen (+20 kPa)">+ Ladedruck-Zeile</button> <button id="row-del" title="Oberste Zeile entfernen">− oberste Zeile</button></span><span class="grow"></span><span id="row-info"></span></div>
+        <div class="selbar"><span id="sel-info">eine Zelle</span><span class="grow"></span>Schritt <input type="number" id="sel-step" value="1" step="0.5" min="0.5"> <span id="sel-unit">°</span>
+          <button id="sel-dn" title="Auswahl senken (Bild↓)">−</button><button id="sel-up" title="Auswahl erhöhen (Bild↑)">+</button></div>
+        <div class="note hint">Zahl + Enter · Pfeiltasten wechseln die Zelle · Ziehen oder Umschalt markiert einen Bereich · Bild↑/↓ ändert die Auswahl · Klick auf eine Drehzahl unten setzt „Halten“ dorthin</div>
+      </section>
+
+      <div class="quick">
+        <div class="card">
+          <h3><span>Schnellregler</span><span class="note" id="q-state"></span></h3>
+          <div class="field"><span>Lambda <small id="q-lambda-note">gilt, wenn das Lambda-Kennfeld aus ist</small></span><input type="number" id="c-lambda" step="0.01"><input type="range" id="c-lambda-r" min="0.6" max="1.4" step="0.01"></div>
+          <div class="field"><span>Ladedruck-Soll (bar)<small id="q-boost-note">Wastegate öffnet hier</small></span><input type="number" id="tb-boost" step="0.05"><input type="range" id="tb-boost-r" min="0.1" max="2.5" step="0.05"></div>
+          <div class="row"><label class="chk" style="margin:0"><input type="checkbox" id="tb-on"> Turbolader aktiv</label><span class="grow"></span>
+            <span class="note" id="tb-line"></span></div>
+          <div class="row"><span class="note">Kraftstoff</span><select id="q-fuel"></select><span class="grow"></span><button id="cold" title="Motor auf Umgebungstemperatur setzen">Kalt</button><button id="warm" title="Motor auf Betriebstemperatur setzen">Warm</button><button id="repair" title="Motorschaden beheben">Reparieren</button></div>
+        </div>
+        <details class="card"><summary>Ventiltrieb · Lage der Nockenwellen</summary>
+          <div class="field"><span>Einlass (°KW)<small>positiv = später</small></span><input type="number" id="cam-in" value="0" step="0.5"><input type="range" id="cam-in-r" min="-20" max="20" step="0.5" value="0"></div>
+          <div class="field"><span>Auslass (°KW)<small>positiv = später</small></span><input type="number" id="cam-ex" value="0" step="0.5"><input type="range" id="cam-ex-r" min="-20" max="20" step="0.5" value="0"></div>
+        </details>
+        <details class="card" id="curve-card"><summary>Zündkurve (ohne Kennfeld) · Begrenzer · Leerlauf</summary>
+          <div class="field"><span>Leerlauf (°)</span><input type="number" id="c-idle" step="0.5"><input type="range" id="c-idle-r" min="0" max="45" step="0.5"></div>
+          <div class="field"><span>Maximum ab 4 000 U/min (°)</span><input type="number" id="c-max" step="0.5"><input type="range" id="c-max-r" min="0" max="50" step="0.5"></div>
+          <div class="field"><span>Drehzahlbegrenzer (U/min)</span><input type="number" id="c-rev" step="100"><input type="range" id="c-rev-r" min="3000" max="14000" step="100"></div>
+          <div class="field"><span>Leerlauf-Drosselstellung</span><input type="number" id="c-idlethr" step="0.001"><input type="range" id="c-idlethr-r" min="0.9" max="1" step="0.001"></div>
+        </details>
+        <details class="card"><summary>Turbolader · Bauart und Geräusch</summary>
+          <div class="field"><span>Turbinengröße<small>klein = früh, hoher Gegendruck</small></span><input type="number" id="tb-size" step="0.05"><input type="range" id="tb-size-r" min="0.15" max="1" step="0.05"></div>
+          <div class="field"><span>Trägheit<small>groß = mehr Turboloch</small></span><input type="number" id="tb-inertia" step="0.1"><input type="range" id="tb-inertia-r" min="0.2" max="4" step="0.1"></div>
+          <div class="field"><span>Ladeluftkühler</span><input type="number" id="tb-ic" step="0.05"><input type="range" id="tb-ic-r" min="0" max="1" step="0.05"></div>
+          <div class="field"><span>Lautstärke Turbogeräusch</span><input type="number" id="tb-vol" step="0.1"><input type="range" id="tb-vol-r" min="0" max="3" step="0.1"></div>
+          <div class="kv note" id="tb-state"></div>
+        </details>
+      </div>
+    </div>
+
+    <div class="dock">
+      <div class="card dynosheet"><h3><span>Dynosheet</span><span class="note">━ Nm &nbsp; ┅ PS &nbsp; <span style="color:var(--red)">●</span> Klopfen</span></h3><div id="d-chart"></div></div>
+      <div class="card runs"><h3><span>Läufe</span></h3><div id="d-runs"></div></div>
+      <div class="card holdcurve"><h3><span>Moment über Zündwinkel</span><span class="note"><span id="h-best"></span> <button class="x" id="h-reset" title="Messpunkte der Kurve verwerfen">neu</button></span></h3><div id="h-chart"></div></div>
+      <div class="card dynoctl">
+        <h3><span>Prüfstand</span><span id="d-state" class="note"></span></h3>
+        <div class="ctlgrid">
+          <b>Sweep</b>
+          <select id="d-mode"><option value="ramp">Zug</option><option value="steps">Stufen</option></select>
+          <label>von <input type="number" id="d-start" value="2000" step="100"></label>
+          <span id="d-ramp-only" style="display:contents"><label>Tempo <input type="number" id="d-rate" value="500" step="50"></label></span>
+          <span id="d-steps-only" style="display:none"><label>bis <input type="number" id="d-end" value="6500" step="100"></label><label>Schritt <input type="number" id="d-step" value="500" step="50"></label></span>
+          <label>Gas % <input type="number" id="d-thr" value="100" min="0" max="100"></label>
+          <span class="btns"><button class="primary" id="d-run">▶ Sweep</button><button id="d-stop" disabled>■</button></span>
+        </div>
+        <label class="note" style="display:flex;gap:6px;align-items:center;margin:2px 0"><input type="checkbox" id="d-repair" checked> vor Sweep und Halten automatisch reparieren</label>
+        <div class="bar" id="d-bar" style="display:none"><span style="width:0"></span></div>
+        <div class="ctlgrid">
+          <b>Halten</b>
+          <label>U/min <input type="number" id="h-rpm" value="4000" step="100"></label>
+          <input type="range" id="h-rpm-r" min="1000" max="9000" step="100" value="4000">
+          <label>Gas % <input type="number" id="h-thr" value="100" min="0" max="100"></label>
+          <span class="btns"><button id="h-start">Halten starten</button></span>
+        </div>
+        <div class="readout">
+          <div><span class="note">Moment</span><b><span id="h-nm">–</span></b> Nm</div>
+          <div><span class="note">Leistung</span><b><span id="h-ps">–</span></b> PS</div>
+          <div><span class="note">Zündwinkel</span><b><span id="h-adv">–</span></b> °</div>
+          <span id="h-state" class="note"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <aside class="only-build" id="build-aside">
     <div class="card" style="margin:0"><h3><span>Zusammenfassung</span></h3><div class="kv" id="b-kv"></div></div>
     <div class="card" style="margin:0"><h3><span>Prüfung</span></h3><div id="msgs"></div></div>

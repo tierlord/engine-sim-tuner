@@ -300,6 +300,11 @@ void PistonEngineSimulator::simulateStep_() {
         m_engine->getChamber(i)->resetLastTimestepIntakeFlow();
     }
 
+    if (m_engine->getLambdaMap()->valid()) {
+        const double lambda = m_engine->getLambdaMap()->sample(m_engine->getRpm(), m_engine->getManifoldPressure());
+        for (int j = 0; j < m_engine->getIntakeCount(); ++j) m_engine->getIntake(j)->setLambda(lambda);
+    }
+
     const int exhaustSystemCount = m_engine->getExhaustSystemCount();
     const int intakeCount = m_engine->getIntakeCount();
     const double fluidTimestep = timestep / m_fluidSimulationSteps;

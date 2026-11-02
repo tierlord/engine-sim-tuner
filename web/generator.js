@@ -256,7 +256,7 @@ export function fnv1a(str) {
 
 // Live values that are edited in the tuning views. When the simulator already holds a value, it is kept.
 const TUNE_SCALARS = ["timing_curve", "rev_limit_rpm", "idle_throttle_plate_position", "cam_center", "lambda", "turbo"];
-const TUNE_MAP = ["map_rpm", "map_load", "map_adv"];
+const TUNE_MAP = ["map_rpm", "map_load", "map_adv", "lambda_map_rpm", "lambda_map_load", "lambda_map_val", "boost_map_rpm", "boost_map_val"];
 
 function applyTuning(header, tuning) {
     if (!tuning) return header;
