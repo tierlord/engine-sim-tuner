@@ -2,7 +2,14 @@ cmake_minimum_required(VERSION 3.10)
 
 option(DTV "Enable video output" OFF)
 option(PIRANHA_ENABLED "Enable scripting input" ON)
-option(DISCORD_ENABLED "Enable Discord Rich Presence" ON)
+
+# The bundled discord-rpc library is only available as a Windows .lib
+if (CMAKE_HOST_WIN32)
+    set(DISCORD_DEFAULT ON)
+else()
+    set(DISCORD_DEFAULT OFF)
+endif()
+option(DISCORD_ENABLED "Enable Discord Rich Presence" ${DISCORD_DEFAULT})
 
 if (DTV)
     add_compile_definitions(ATG_ENGINE_SIM_VIDEO_CAPTURE)
@@ -188,6 +195,7 @@ if (PIRANHA_ENABLED)
         PUBLIC dependencies/submodules)
 
     target_link_libraries(engine-sim-script-interpreter
+        engine-sim
         csv-io
         piranha)
 endif (PIRANHA_ENABLED)

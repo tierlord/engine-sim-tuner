@@ -1,5 +1,7 @@
 #include "../include/synthesizer.h"
 
+#include <math.h>
+
 #include "../include/utilities.h"
 #include "../include/delta.h"
 

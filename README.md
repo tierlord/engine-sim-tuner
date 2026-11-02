@@ -55,7 +55,7 @@ The RPM hold feature will hold the engine at a specific RPM and also measure the
 I wrote this to demo in a [YouTube video](https://youtu.be/RKT-sKtR970), not as a real product. If you would like it to become a usable product please reach out to me or join my Discord (link can be found in the description of the aforementioned YouTube video). I use this codebase for my own purposes and so it might change frequently and without warning.
 
 ## How do I build it? (Ignore this section if you're not a developer!)
-**Note: this project currently only builds on Windows!**
+**Note: the project builds on Windows and Linux (see the Linux section below).**
 
 ### Step 1 - Clone the repository
 ```git clone --recurse-submodules https://github.com/ange-yaghi/engine-sim```
@@ -82,6 +82,27 @@ cmake --build .
 ```
 
 If these steps are successful, a Visual Studio solution will be generated in ```build```. You can open this project with Visual Studio and then run the ```engine-sim-app``` project. If you encounter an error telling you that you're missing DLLs, you will have to copy those DLLs to your EXE's directory.
+
+### Linux
+
+The Linux port uses SDL2 for the window, input and audio and OpenGL 4.3 for rendering. Its changes are kept as patches for the bundled submodules, so the submodules stay at their pinned commits.
+
+1. Clone with submodules: `git clone --recurse-submodules https://github.com/ange-yaghi/engine-sim`
+2. Install the build dependencies (Debian/Ubuntu): `sudo apt install cmake libsdl2-dev libsdl2-image-dev libboost-filesystem-dev flex bison libgl-dev`
+3. Apply the Linux patches to the submodules: `scripts/apply-linux-patches.sh`
+4. Configure and build:
+
+```bash
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+```
+
+```bash
+cmake --build build --target engine-sim-app
+```
+
+5. Start the simulator from the `build` directory, because the asset paths are relative to it: `cd build && ./engine-sim-app`
+
+Discord Rich Presence is disabled on Linux, the bundled `discord-rpc` library only exists for Windows.
 
 ## Patreon Supporters
 

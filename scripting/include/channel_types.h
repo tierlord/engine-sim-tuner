@@ -35,7 +35,7 @@ namespace es_script {
 
 #define ASSIGN_CHANNEL_TYPE(type, channel) \
     class type; \
-    template <> extern inline const piranha::ChannelType *LookupChannelType<type>() { \
+    template <> inline const piranha::ChannelType *LookupChannelType<type>() { \
         return &ObjectChannel::channel; \
     }
 

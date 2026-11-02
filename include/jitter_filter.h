@@ -19,7 +19,7 @@ public:
         float audioFrequency);
     virtual float f(float sample) override;
 
-    __forceinline float fast_f(float sample, float jitterScale = 1.0f) {
+    ATG_FORCE_INLINE float fast_f(float sample, float jitterScale = 1.0f) {
         m_history[m_offset] = sample;
         ++m_offset;
 
