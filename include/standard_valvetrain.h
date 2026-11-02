@@ -23,6 +23,7 @@ public:
     virtual Camshaft *getActiveExhaustCamshaft() override;
 
     virtual void setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) override;
+    virtual void getCamshafts(std::vector<Camshaft *> *intake, std::vector<Camshaft *> *exhaust) override;
 
 private:
     Camshaft *m_intakeCamshaft;

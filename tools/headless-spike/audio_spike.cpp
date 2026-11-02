@@ -23,7 +23,11 @@
 
 // ---- minimal portable wav reader (16 bit PCM, first channel) -------------------------------------
 static bool readWav(const char *path, std::vector<int16_t> *out) {
-    std::ifstream f(path, std::ios::binary);
+    // Scripts may contain Windows separators; Linux needs forward slashes
+    std::string normalized = path;
+    for (char &c : normalized) if (c == '\\') c = '/';
+
+    std::ifstream f(normalized, std::ios::binary);
     if (!f) return false;
     char riff[12]; f.read(riff, 12);
     if (std::memcmp(riff, "RIFF", 4) || std::memcmp(riff + 8, "WAVE", 4)) return false;

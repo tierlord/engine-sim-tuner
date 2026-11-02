@@ -2,6 +2,7 @@
 
 #include "../include/synthesizer.h"
 
+#include <algorithm>
 #include <chrono>
 
 using namespace std::chrono_literals;
@@ -39,6 +40,7 @@ void setupSynchronizedSynthesizer(Synthesizer &synth) {
     audioParams.levelerMaxGain = 1.0;
     audioParams.levelerMinGain = 1.0;
     audioParams.dF_F_mix = 0.0;
+    audioParams.convolution = 0.0f;         // no impulse response in this test, it checks the sample timing only
     params.initialAudioParameters = audioParams;
 
     synth.initialize(params);
@@ -114,7 +116,9 @@ TEST(SynthesizerTests, SynthesizerSystemTestSingleThread) {
     Synthesizer synth;
     setupSynchronizedSynthesizer(synth);
 
-    int16_t *output = new int16_t[outputSamples];
+    // readAudioOutput(16, ...) always writes 16 values, zero padded when fewer are ready, so the
+    // buffer needs room for one more block beyond the samples that are counted
+    int16_t *output = new int16_t[outputSamples + 16];
     int totalSamples = 0;
 
     for (int i = 0; i < inputSamples;) {
@@ -131,9 +135,11 @@ TEST(SynthesizerTests, SynthesizerSystemTestSingleThread) {
         int a = 0;
     }
 
-    const int rem = synth.readAudioOutput(outputSamples - totalSamples, output + totalSamples);
+    // The loop can already have produced all outputSamples; a negative request would corrupt the heap
+    const int remaining = std::max(0, outputSamples - totalSamples);
+    const int rem = synth.readAudioOutput(remaining, output + totalSamples);
 
-    EXPECT_EQ(rem, outputSamples - totalSamples);
+    EXPECT_EQ(rem, remaining);
 
     for (int i = 0; i < 16; ++i) {
         EXPECT_EQ(output[i], 0);
@@ -155,7 +161,9 @@ TEST(SynthesizerTests, SynthesizerSystemTest) {
     setupSynchronizedSynthesizer(synth);
     synth.startAudioRenderingThread();
 
-    int16_t *output = new int16_t[outputSamples];
+    // readAudioOutput(16, ...) always writes 16 values, zero padded when fewer are ready, so the
+    // buffer needs room for one more block beyond the samples that are counted
+    int16_t *output = new int16_t[outputSamples + 16];
     int totalSamples = 0;
 
     for (int i = 0; i < inputSamples;) {
@@ -172,8 +180,10 @@ TEST(SynthesizerTests, SynthesizerSystemTest) {
     synth.endInputBlock();
     synth.waitProcessed();
 
-    const int rem = synth.readAudioOutput(outputSamples - totalSamples, output + totalSamples);
-    EXPECT_EQ(rem, outputSamples - totalSamples);
+    // The loop can already have produced all outputSamples; a negative request would corrupt the heap
+    const int remaining = std::max(0, outputSamples - totalSamples);
+    const int rem = synth.readAudioOutput(remaining, output + totalSamples);
+    EXPECT_EQ(rem, remaining);
 
     for (int i = 0; i < 16; ++i) {
         EXPECT_EQ(output[i], 0);

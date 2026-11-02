@@ -130,6 +130,18 @@ class SimulationSession {
         std::map<std::string, std::string> m_tuning;        // live values currently in effect (GET /tune)
         std::string m_liveStructure;           // structure hash of the engine currently loaded in live mode
         Function *m_liveTimingCurve = nullptr; // timing curve created by applyLiveTuning
+
+        // Lage (Mittellinie) der Nockenwellen: Versatz in Grad Kurbelwelle, relativ zum geladenen Skript
+        struct CamBase {
+            Camshaft *camshaft;
+            bool intake;
+            std::vector<double> lobes;         // lobe centrelines in crank radians as the script set them
+        };
+        std::vector<CamBase> m_camBases;
+        double m_camCenterIntake = 0.0;
+        double m_camCenterExhaust = 0.0;
+        void captureCamBases();
+        void applyCamCenter();
 };
 
 #endif /* ATG_ENGINE_SIM_SIMULATION_SESSION_H */

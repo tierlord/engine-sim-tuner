@@ -1,5 +1,6 @@
 #include "../include/simulation_session.h"
 
+#include "../include/camshaft.h"
 #include "../include/cam_lobe.h"
 #include "../include/exhaust_system.h"
 #include "../include/impulse_response.h"
@@ -10,6 +11,7 @@
 
 #include "../scripting/include/compiler.h"
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <cstdio>
@@ -240,8 +242,41 @@ void SimulationSession::loadEngine(Engine *engine, Vehicle *vehicle, Transmissio
     audioParams.dF_F_mix = static_cast<float>(engine->getInitialHighFrequencyGain());
     m_simulator->synthesizer().setAudioParameters(audioParams);
 
+    captureCamBases();
+    applyCamCenter();
+
     loadImpulseResponses();
     m_simulator->startAudioRenderingThread();
+}
+
+void SimulationSession::captureCamBases() {
+    m_camBases.clear();
+    if (m_iceEngine == nullptr) return;
+
+    for (int b = 0; b < m_iceEngine->getCylinderBankCount(); ++b) {
+        std::vector<Camshaft *> intake, exhaust;
+        m_iceEngine->getHead(b)->getValvetrain()->getCamshafts(&intake, &exhaust);
+
+        for (Camshaft *camshaft : intake) {
+            CamBase base{ camshaft, true, {} };
+            for (int lobe = 0; lobe < camshaft->getLobeCount(); ++lobe) base.lobes.push_back(2.0 * camshaft->getLobeCenterline(lobe));
+            m_camBases.push_back(base);
+        }
+        for (Camshaft *camshaft : exhaust) {
+            CamBase base{ camshaft, false, {} };
+            for (int lobe = 0; lobe < camshaft->getLobeCount(); ++lobe) base.lobes.push_back(2.0 * camshaft->getLobeCenterline(lobe));
+            m_camBases.push_back(base);
+        }
+    }
+}
+
+void SimulationSession::applyCamCenter() {
+    for (const CamBase &base : m_camBases) {
+        const double offset = (base.intake ? m_camCenterIntake : m_camCenterExhaust) * units::deg;
+        for (int lobe = 0; lobe < (int)base.lobes.size(); ++lobe) {
+            base.camshaft->setLobeCenterline(lobe, base.lobes[lobe] + offset);
+        }
+    }
 }
 
 void SimulationSession::loadImpulseResponses() {
@@ -719,6 +754,19 @@ std::string SimulationSession::applyLiveValues(const std::map<std::string, std::
                 }
                 applied += " cam_switch=" + std::to_string((int)rpm);
             }
+        }
+    }
+
+    // Lage der Nockenwellen: "intake exhaust" in Grad Kurbelwelle, relativ zum Skript (positiv = später)
+    const auto camCenter = values.find("cam_center");
+    if (camCenter != values.end()) {
+        std::stringstream ss(camCenter->second);
+        double intake = 0, exhaust = 0;
+        if (ss >> intake >> exhaust) {
+            m_camCenterIntake = std::clamp(intake, -30.0, 30.0);
+            m_camCenterExhaust = std::clamp(exhaust, -30.0, 30.0);
+            applyCamCenter();
+            applied += " cam_center=" + std::to_string(m_camCenterIntake).substr(0, 5) + "/" + std::to_string(m_camCenterExhaust).substr(0, 5);
         }
     }
 

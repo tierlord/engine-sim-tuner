@@ -38,6 +38,7 @@ public:
     virtual bool isHighLiftActive() const override { return isVtecEnabled(); }
     virtual void setSwitching(double minRpm, double hysteresis, double minThrottle, double minManifoldPressure) override;
     virtual void setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) override;
+    virtual void getCamshafts(std::vector<Camshaft *> *intake, std::vector<Camshaft *> *exhaust) override;
 
 private:
     bool isVtecEnabled() const;

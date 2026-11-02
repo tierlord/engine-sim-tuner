@@ -38,6 +38,7 @@ class Camshaft : public Part {
 
         void setLobeCenterline(int lobe, double crankAngle) { m_lobeAngles[lobe] = crankAngle / 2; }
         double getLobeCenterline(int lobe) const { return m_lobeAngles[lobe]; }
+        int getLobeCount() const { return m_lobes; }
 
         double getAngle() const;
 

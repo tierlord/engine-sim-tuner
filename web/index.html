@@ -36,7 +36,7 @@
   <nav class="only-tune" id="nav-tune">
     <a data-v="ign" class="act">Zündung</a>
     <a data-v="fuel">Gemisch &amp; Kraftstoff <small>folgt</small></a>
-    <a data-v="cam">Ventiltrieb <small>folgt</small></a>
+    <a data-v="cam">Ventiltrieb</a>
     <a data-v="air">Ansaugung &amp; Abgas <small>später</small></a>
     <a data-v="turbo">Aufladung <small>später</small></a>
     <hr>
@@ -114,6 +114,18 @@
       </div>
     </section>
 
+    <section id="v-cam">
+      <h1>Ventiltrieb</h1>
+      <div class="sub">Lage der Nockenwellen (Mittellinie) live verschieben. Der Versatz gilt relativ zur Motordatei. Positiv öffnen die Ventile später, negativ früher.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Lage · Grad Kurbelwelle <span class="live-tag">● live</span></span></h3>
+          <div class="bfield"><span>Einlass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-in" value="0" step="0.5"><input type="range" id="cam-in-r" min="-20" max="20" step="0.5" value="0"></div></div>
+          <div class="bfield"><span>Auslass (°KW)<small>positiv = später</small></span><div class="sliderbox"><input type="number" id="cam-ex" value="0" step="0.5"><input type="range" id="cam-ex-r" min="-20" max="20" step="0.5" value="0"></div></div>
+          <div class="sub" style="margin:8px 0 0">Hub und Dauer stehen vorerst im Bauen (Nockenfelder).</div>
+        </div>
+      </div>
+    </section>
     <section id="v-soon"><h1 id="soon-title">–</h1><div class="card note" id="soon-text"></div></section>
     <section id="v-b-layout" class="bsec">
       <h1>Anordnung</h1>

@@ -35,6 +35,9 @@ void ConvolutionFilter::destroy() {
 }
 
 float ConvolutionFilter::f(float sample) {
+    // No impulse response loaded (missing or unreadable file): pass the signal through
+    if (m_shiftRegister == nullptr) return sample;
+
     m_shiftRegister[m_shiftOffset] = sample;
 
     float result = 0;

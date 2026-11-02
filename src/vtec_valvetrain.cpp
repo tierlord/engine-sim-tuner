@@ -93,3 +93,10 @@ bool VtecValvetrain::isVtecEnabled() const {
 
     return m_active;
 }
+
+void VtecValvetrain::getCamshafts(std::vector<Camshaft *> *intake, std::vector<Camshaft *> *exhaust) {
+    intake->push_back(m_intakeCamshaft);
+    exhaust->push_back(m_exhaustCamshaft);
+    intake->push_back(m_vtecIntakeCamshaft);
+    exhaust->push_back(m_vtecExhaustCamshaft);
+}

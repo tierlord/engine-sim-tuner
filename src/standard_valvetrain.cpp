@@ -32,6 +32,11 @@ Camshaft *StandardValvetrain::getActiveExhaustCamshaft() {
     return m_exhaustCamshaft;
 }
 
+void StandardValvetrain::getCamshafts(std::vector<Camshaft *> *intake, std::vector<Camshaft *> *exhaust) {
+    intake->push_back(m_intakeCamshaft);
+    exhaust->push_back(m_exhaustCamshaft);
+}
+
 void StandardValvetrain::setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) {
     (void)intakeHigh;
     (void)exhaustHigh;

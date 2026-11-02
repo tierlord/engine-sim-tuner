@@ -1,6 +1,8 @@
 #ifndef ATG_ENGINE_SIM_VALVETRAIN_H
 #define ATG_ENGINE_SIM_VALVETRAIN_H
 
+#include <vector>
+
 class Camshaft;
 class Function;
 class Valvetrain {
@@ -25,6 +27,9 @@ public:
 
     // replace the lobe profiles of the camshafts (nullptr: leave as is); the "high" ones only exist with VTEC
     virtual void setLobeProfiles(Function *intakeLow, Function *exhaustLow, Function *intakeHigh, Function *exhaustHigh) = 0;
+
+    // all camshafts of this valvetrain (the VTEC ones too), for the centreline controls
+    virtual void getCamshafts(std::vector<Camshaft *> *intake, std::vector<Camshaft *> *exhaust) = 0;
 };
 
 #endif /* ATG_ENGINE_SIM_VALVETRAIN_H */

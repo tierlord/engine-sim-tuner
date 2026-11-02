@@ -21,7 +21,7 @@ let buildView = 'b-layout';
 function show(view) {
     document.querySelectorAll('main section').forEach(s => s.classList.remove('act'));
     if (view.startsWith('b-')) buildView = view;
-    if (view === 'ign' || view === 'dyno' || view.startsWith('b-')) $('v-' + view).classList.add('act');
+    if (view === 'ign' || view === 'dyno' || view === 'cam' || view.startsWith('b-')) $('v-' + view).classList.add('act');
     else {
         $('soon-title').textContent = SOON[view][0];
         $('soon-text').textContent = SOON[view][1];
@@ -110,6 +110,9 @@ async function loadTune() {
     setField('c-max', curve.length ? curve[curve.length - 1][1] : 34);
     setField('c-rev', tune.rev_limit_rpm !== undefined ? Number(tune.rev_limit_rpm) : 8000);
     setField('c-idlethr', tune.idle_throttle_plate_position !== undefined ? Number(tune.idle_throttle_plate_position) : 0.99);
+    const cam = (tune.cam_center || '0 0').trim().split(/\s+/).map(Number);
+    setField('cam-in', cam[0] || 0);
+    setField('cam-ex', cam[1] || 0);
 
     readMap();
     renderMap();
@@ -135,6 +138,8 @@ linkField('c-idle', () => soon('curve', () => api.post('/tune', 'timing_curve ' 
 linkField('c-max', () => soon('curve', () => api.post('/tune', 'timing_curve ' + curveText())));
 linkField('c-rev', v => soon('rev', () => api.post('/tune', 'rev_limit_rpm ' + v)));
 linkField('c-idlethr', v => soon('idlethr', () => api.post('/tune', 'idle_throttle_plate_position ' + v)));
+linkField('cam-in', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
+linkField('cam-ex', () => soon('cam', () => api.post('/tune', `cam_center ${$('cam-in').value} ${$('cam-ex').value}`), 120));
 
 /* ------------------------------------------------------------------ ignition map */
 
