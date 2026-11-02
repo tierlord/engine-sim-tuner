@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<title>Engine-Sim-Tuner – Entwurf (Bauen / Tunen)</title>
+<style>
+  /* Farben aus dem Simulator-Thema (assets/themes/default.mr), damit Fenster und Oberfläche zusammenpassen */
+  :root {
+    --bg: #0e1012; --panel: #151a1f; --panel2: #1b2127; --line: #262d34; --text: #e6e9ec; --dim: #8b95a1;
+    --red: #ee4445; --orange: #f4802a; --yellow: #fdbd2e; --blue: #77cee0; --green: #bdd869; --pink: #f394be;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 "Segoe UI", system-ui, sans-serif; height: 100vh; display: grid; grid-template-rows: 52px 84px 1fr; overflow: hidden; }
+  header { display: flex; align-items: center; gap: 14px; padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; letter-spacing: .3px; } .brand b { color: var(--orange); }
+  .chip { background: var(--panel2); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; color: var(--dim); }
+  .chip i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--green); margin-right: 7px; box-shadow: 0 0 8px var(--green); }
+  .chip.stale { color: var(--yellow); border-color: #5a4a1a; } .chip.stale i { background: var(--yellow); box-shadow: 0 0 8px var(--yellow); }
+  .grow { flex: 1; }
+  .ctl { display: flex; align-items: center; gap: 8px; color: var(--dim); }
+  button { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 14px; font: inherit; cursor: pointer; }
+  button:hover { border-color: #3a444d; }
+  button.primary { background: var(--orange); border-color: var(--orange); color: #1a0e04; font-weight: 600; }
+  button.big { padding: 12px 18px; font-size: 14px; width: 100%; }
+  button.on { border-color: var(--green); color: var(--green); }
+  input[type=range] { accent-color: var(--orange); width: 130px; }
+
+  /* Umschalter Bauen / Tunen */
+  .mode { display: inline-flex; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 3px; }
+  .mode span { padding: 6px 20px; border-radius: 8px; color: var(--dim); cursor: pointer; font-weight: 600; }
+  .mode span.act { background: var(--orange); color: #1a0e04; }
+
+  /* Kennzahlen / Live-Leiste */
+  .live { display: flex; gap: 10px; padding: 10px 16px; background: #11151a; border-bottom: 1px solid var(--line); }
+  .tile { flex: 1; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; min-width: 0; }
+  .tile.rpm { flex: 2.2; }
+  .tile label { color: var(--dim); font-size: 11px; text-transform: uppercase; letter-spacing: .6px; }
+  .tile .v { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; } .tile .v small { font-size: 12px; color: var(--dim); font-weight: 400; }
+  .bar { height: 5px; background: var(--panel2); border-radius: 3px; overflow: hidden; margin-top: 4px; }
+  .bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--green) 60%, var(--yellow) 80%, var(--red)); }
+  .ok { color: var(--green); } .warn { color: var(--yellow); }
+  body[data-mode=build] .only-tune, body[data-mode=tune] .only-build { display: none !important; }
+
+  /* Hauptbereich */
+  .body { display: grid; grid-template-columns: 210px 1fr 330px; min-height: 0; }
+  body[data-mode=build] .body { grid-template-columns: 210px 1fr 340px; }
+  nav { background: var(--panel); border-right: 1px solid var(--line); padding: 12px 8px; display: flex; flex-direction: column; gap: 2px; }
+  nav a { padding: 9px 12px; border-radius: 8px; color: var(--dim); cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+  nav a:hover { background: var(--panel2); color: var(--text); }
+  nav a.act { background: var(--panel2); color: var(--text); box-shadow: inset 3px 0 0 var(--orange); }
+  nav a small { font-size: 10px; background: var(--line); color: var(--dim); padding: 1px 6px; border-radius: 6px; }
+  nav hr { border: 0; border-top: 1px solid var(--line); margin: 8px 6px; }
+  main { overflow: auto; padding: 18px 20px; }
+  main section { display: none; } main section.act { display: block; }
+  h1 { margin: 0 0 4px; font-size: 20px; } .sub { color: var(--dim); margin-bottom: 16px; }
+  .cols { display: grid; grid-template-columns: 1.55fr 1fr; gap: 16px; align-items: start; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 16px; }
+  .card h3 { margin: 0 0 10px; font-size: 13px; text-transform: uppercase; letter-spacing: .6px; color: var(--dim); display: flex; justify-content: space-between; }
+  .field { display: grid; grid-template-columns: 1fr 70px; gap: 4px 10px; align-items: center; margin: 10px 0; }
+  .field span small { display: block; color: var(--dim); font-size: 11px; }
+  .field input[type=number], .field select { background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; padding: 4px 6px; text-align: right; font: inherit; }
+  .field input[type=range] { grid-column: 1 / -1; width: 100%; }
+  .live-tag { color: var(--green); font-size: 11px; margin-left: 6px; }
+  .reload-tag { color: var(--yellow); font-size: 11px; margin-left: 6px; }
+  .soon { color: var(--dim); font-size: 11px; background: var(--line); border-radius: 6px; padding: 1px 7px; margin-left: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg span { padding: 6px 12px; color: var(--dim); background: var(--panel2); cursor: pointer; } .seg span.act { background: var(--orange); color: #1a0e04; font-weight: 600; }
+  svg text { fill: var(--dim); font-size: 10px; }
+  table { border-collapse: collapse; width: 100%; } td, th { padding: 5px 8px; border-bottom: 1px solid var(--line); text-align: left; } th { color: var(--dim); font-weight: 500; font-size: 11px; text-transform: uppercase; }
+  .runs .run { display: grid; grid-template-columns: 14px 1fr; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .runs .run:hover { background: var(--panel2); }
+  .sw { width: 12px; height: 12px; border-radius: 3px; margin-top: 3px; }
+  .chg { color: var(--yellow); font-size: 11px; }
+  .events { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-top: 10px; font-variant-numeric: tabular-nums; } .events b { color: var(--text); }
+  aside { background: var(--panel); border-left: 1px solid var(--line); padding: 12px; display: flex; flex-direction: column; gap: 12px; overflow: auto; }
+  aside .hint { color: var(--dim); font-size: 11px; }
+  .scope { background: #0b0d0f; border: 1px solid var(--line); border-radius: 10px; padding: 8px; }
+  .scope h4 { margin: 0 0 4px; font-size: 11px; color: var(--dim); text-transform: uppercase; letter-spacing: .6px; display: flex; justify-content: space-between; }
+  .kv { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; } .kv b { font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body data-mode="tune">
+
+<header>
+  <div class="brand">Engine-Sim-<b>Tuner</b></div>
+  <div class="mode"><span id="m-build" onclick="setMode('build')">Bauen</span><span id="m-tune" class="act" onclick="setMode('tune')">Tunen</span></div>
+  <div class="chip only-tune"><i></i>Simulator verbunden · Ton läuft</div>
+  <div class="chip only-tune">VTEC I4 · 1,80 L · Super Plus 98</div>
+  <div class="chip stale only-build"><i></i>Änderungen noch nicht geladen – der alte Motor läuft weiter</div>
+  <div class="grow"></div>
+  <div class="ctl only-tune">Gas <input type="range" min="0" max="100" value="0" title="Gaspedal"> <b style="color:var(--text);width:34px">0 %</b></div>
+  <button class="only-tune">Starter (halten)</button>
+  <button class="on only-tune">Zündung an</button>
+  <button class="primary only-tune" onclick="show('dyno')">▶ Messlauf</button>
+  <button class="primary only-build" onclick="setMode('tune')">Motor laden und tunen →</button>
+</header>
+
+<!-- Bauen: Kennzahlen; Tunen: Live-Leiste -->
+<div class="live only-build">
+  <div class="tile"><label>Hubraum</label><div class="v">1,80 <small>L · 4 Zyl.</small></div></div>
+  <div class="tile"><label>Bohrung × Hub</label><div class="v">81 × 87,2 <small>mm</small></div></div>
+  <div class="tile"><label>Verdichtung</label><div class="v">11,8 <small>: 1</small></div></div>
+  <div class="tile"><label>Anordnung</label><div class="v">Reihe <small>1 Bank</small></div></div>
+  <div class="tile"><label>Zündfolge</label><div class="v">1-3-4-2 <small>gleichmäßig</small></div></div>
+  <div class="tile"><label>Ventiltrieb</label><div class="v">VTEC <small>2 Profile</small></div></div>
+</div>
+<div class="live only-tune">
+  <div class="tile rpm"><label>Drehzahl</label><div class="v"><span id="rpm">3 420</span> <small>U/min · Redline 8 400</small></div><div class="bar"><span id="rpmbar" style="width:41%"></span></div></div>
+  <div class="tile"><label>Last (MAP)</label><div class="v"><span id="map">64</span> <small>kPa</small></div></div>
+  <div class="tile"><label>Zündwinkel</label><div class="v"><span id="adv">28</span> <small>° v. OT</small></div></div>
+  <div class="tile"><label>Drehmoment</label><div class="v"><span id="nm">212</span> <small>Nm · 98 PS</small></div></div>
+  <div class="tile"><label>Klopfen</label><div class="v ok">0 <small>%</small></div></div>
+  <div class="tile"><label>Motorschaden</label><div class="v ok">0 <small>%</small></div></div>
+  <div class="tile"><label>Nocken</label><div class="v warn">niedrig <small>→ 6 200</small></div></div>
+</div>
+
+<div class="body">
+  <!-- Navigation Bauen -->
+  <nav class="only-build">
+    <a data-v="b-layout" class="act" onclick="show('b-layout')">Anordnung</a>
+    <a data-v="b-size" onclick="show('b-size')">Hubraum &amp; Verdichtung</a>
+    <a data-v="b-crank" onclick="show('b-crank')">Kurbeltrieb</a>
+    <a data-v="b-air" onclick="show('b-air')">Ansaugung &amp; Abgas</a>
+    <a data-v="b-valve" onclick="show('b-valve')">Ventiltrieb (Aufbau)</a>
+  </nav>
+  <!-- Navigation Tunen -->
+  <nav class="only-tune">
+    <a data-v="ign" class="act" onclick="show('ign')">Zündung</a>
+    <a data-v="fuel" onclick="show('fuel')">Gemisch &amp; Kraftstoff</a>
+    <a data-v="cam" onclick="show('cam')">Ventiltrieb</a>
+    <a data-v="air">Ansaugung &amp; Abgas <small>später</small></a>
+    <a data-v="turbo">Aufladung <small>später</small></a>
+    <hr>
+    <a data-v="dyno" onclick="show('dyno')">Prüfstand &amp; Vergleich</a>
+  </nav>
+
+  <main>
+    <!-- ================= BAUEN ================= -->
+    <section id="v-b-layout">
+      <h1>Anordnung</h1>
+      <div class="sub">Wähle eine Grundform. Bänke und Zapfen lassen sich in der Grafik frei verschieben. Alles hier lädt den Motor neu.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Stirnansicht</span><span>Zapfen ziehen · Shift = 5°-Raster</span></h3>
+          <svg viewBox="0 0 520 300" width="100%" id="end-svg"></svg>
+        </div>
+        <div>
+          <div class="card">
+            <h3><span>Grundform</span></h3>
+            <div class="field"><span>Bauart</span><select><option>Reihe</option></select></div>
+            <div class="field"><span>Zylinderzahl</span><input type="number" value="4"></div>
+            <div class="field"><span>Zündfolge</span><input type="text" value="1-3-4-2" style="width:70px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px 6px;text-align:right"></div>
+            <div style="color:var(--dim);font-size:11px">Zündabstände 180° · gleichmäßig</div>
+          </div>
+          <div class="card"><h3><span>Zylinder</span><span>+ Zylinder</span></h3>
+            <table><tr><th>Nr</th><th>Bank</th><th>Zapfen °</th><th>Zündung °</th></tr>
+              <tr><td>1</td><td>1</td><td>0</td><td>0</td></tr><tr><td>2</td><td>1</td><td>180</td><td>540</td></tr>
+              <tr><td>3</td><td>1</td><td>180</td><td>180</td></tr><tr><td>4</td><td>1</td><td>0</td><td>360</td></tr></table>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="v-b-size"><h1>Hubraum &amp; Verdichtung</h1><div class="sub">Bohrung, Hub und Brennraumvolumen. Die Verdichtung ergibt sich daraus (oder umgekehrt).</div><div class="card" style="height:240px;color:var(--dim)">Bohrung · Hub · Pleuel · Kompressionshöhe · Brennraum · Verdichtung · Hubraum gesamt</div></section>
+    <section id="v-b-crank"><h1>Kurbeltrieb</h1><div class="sub">Kurbelwelle, Schwungrad, Massen, Reibung.</div><div class="card" style="height:240px;color:var(--dim)">Schwungradmasse · Kurbelwellenradius · Kolben- und Pleuelmasse</div></section>
+    <section id="v-b-air"><h1>Ansaugung &amp; Abgas</h1><div class="sub">Geometrie, die man nicht im Betrieb ändert.</div><div class="card" style="height:240px;color:var(--dim)">Plenum · Saugrohrlänge · Primärrohre · Auspuffanlage</div></section>
+    <section id="v-b-valve">
+      <h1>Ventiltrieb (Aufbau)</h1>
+      <div class="sub">Hier legst du fest, ob es ein zweites Nockenprofil gibt. Hub, Dauer und Lage stellst du später im Tunen live ein.</div>
+      <div class="card" style="max-width:520px">
+        <div class="field"><span>Zweites Nockenprofil (VTEC)<span class="reload-tag">Neustart</span></span><select><option>an</option><option>aus</option></select></div>
+        <div style="color:var(--dim);font-size:11px">Ohne VTEC zeigt „Tunen → Ventiltrieb“ nur ein Profil, mit VTEC zusätzlich das hohe Profil und den Umschaltpunkt.</div>
+      </div>
+    </section>
+
+    <!-- ================= TUNEN ================= -->
+    <section id="v-ign" class="act">
+      <h1>Zündung</h1>
+      <div class="sub">Der weiße Punkt zeigt, wo der Motor gerade im Kennfeld arbeitet. Änderungen wirken sofort.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Zündkennfeld · Zündwinkel in ° vor OT <span class="live-tag">● live</span></span><span><label><input type="checkbox" checked> aktiv</label></span></h3>
+          <svg id="map-svg" viewBox="0 0 640 330" width="100%"></svg>
+          <div class="sub" style="margin:8px 0 0">Klicken und ziehen malt mehrere Zellen · Zahl eintippen setzt eine Zelle · rot = sehr spät (Pops möglich), blau = früh</div>
+        </div>
+        <div>
+          <div class="card">
+            <h3><span>Zündkurve (ohne Kennfeld)</span></h3>
+            <div class="field"><span>Leerlauf<span class="live-tag">● live</span></span><input type="number" value="12"><input type="range" min="0" max="45" value="12"></div>
+            <div class="field"><span>Maximum bei 4 000 U/min<span class="live-tag">● live</span></span><input type="number" value="34"><input type="range" min="0" max="50" value="34"></div>
+          </div>
+          <div class="card">
+            <h3><span>Begrenzer &amp; Start</span></h3>
+            <div class="field"><span>Drehzahlbegrenzer (U/min)<span class="live-tag">● live</span></span><input type="number" value="9000"><input type="range" min="3000" max="14000" step="100" value="9000"></div>
+            <div class="field"><span>Leerlauf-Drosselstellung<span class="live-tag">● live</span></span><input type="number" value="0.994" step="0.001"><input type="range" min="0.9" max="1" step="0.001" value="0.994"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-fuel">
+      <h1>Gemisch &amp; Kraftstoff</h1>
+      <div class="sub">Lambda, Sorte und Klopfmodell gehören zusammen: Fett kühlt und klopft weniger, mager brennt langsamer und heißer.</div>
+      <div class="cols" style="grid-template-columns:1fr 1fr">
+        <div class="card">
+          <h3><span>Gemisch</span></h3>
+          <div class="field"><span>Lambda<span class="soon">bald</span><small>1,00 = stöchiometrisch · fett (&lt;1) · mager (&gt;1)</small></span><input type="number" value="1.00" disabled><input type="range" min="0.7" max="1.3" step="0.01" value="1" disabled></div>
+          <div style="color:var(--dim);font-size:11px">Braucht eine Erweiterung im Simulator (Kraftstoffmenge je Luftmasse). Danach können unverbrannte Reste im Abgas zünden: Pops und Bangs.</div>
+        </div>
+        <div class="card">
+          <h3><span>Kraftstoff &amp; Klopfen</span></h3>
+          <div class="seg" style="margin-bottom:10px"><span>95</span><span class="act">98</span><span>100</span><span>E10</span><span>E20</span><span>E85</span></div>
+          <div class="field"><span>Oktanzahl (RON)<span class="live-tag">● live</span></span><input type="number" value="98"></div>
+          <div class="field"><span>Motorschaden durch Klopfen<span class="live-tag">● live</span></span><select><option>an</option><option>aus</option></select></div>
+          <button>Motor reparieren</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-cam">
+      <h1>Ventiltrieb</h1>
+      <div class="sub">Hub, Dauer und Lage von Ein- und Auslass stellst du im Betrieb ein. Die Welle wird dabei nur verdreht, der Motor lädt nicht neu.</div>
+      <div class="card">
+        <h3><span>Ventilhub über Kurbelwinkel (ein Arbeitsspiel, 720°)</span><span><span style="color:var(--blue)">━ Einlass</span> &nbsp; <span style="color:var(--orange)">━ Auslass</span> &nbsp; <span style="color:var(--dim)">┅ hohes Profil</span></span></h3>
+        <svg viewBox="0 0 900 250" width="100%" id="cam-svg"></svg>
+        <div class="events">
+          <div>Einlass öffnet <b>14° v. OT</b> · schließt <b>46° n. UT</b></div>
+          <div>Auslass öffnet <b>50° v. UT</b> · schließt <b>10° n. OT</b></div>
+          <div>Überschneidung <b>24°</b></div><div>Einlass-Mittellinie <b>116°</b> · Auslass <b>112°</b></div>
+        </div>
+      </div>
+      <div class="cols" style="grid-template-columns:1fr 1fr 1fr">
+        <div class="card"><h3><span style="color:var(--blue)">Einlass</span></h3>
+          <div class="field"><span>Hub (mm)<span class="live-tag">● live</span></span><input type="number" value="6.9"><input type="range" min="3" max="22" step=".1" value="6.9"></div>
+          <div class="field"><span>Dauer (° @0,05")<span class="live-tag">● live</span></span><input type="number" value="210"><input type="range" min="150" max="330" value="210"></div>
+          <div class="field"><span>Lage (Mittellinie °)<span class="live-tag">● live</span></span><input type="number" value="116"><input type="range" min="90" max="135" value="116"></div>
+        </div>
+        <div class="card"><h3><span style="color:var(--orange)">Auslass</span></h3>
+          <div class="field"><span>Hub (mm)<span class="live-tag">● live</span></span><input type="number" value="6.5"><input type="range" min="3" max="22" step=".1" value="6.5"></div>
+          <div class="field"><span>Dauer (° @0,05")<span class="live-tag">● live</span></span><input type="number" value="190"><input type="range" min="150" max="330" value="190"></div>
+          <div class="field"><span>Lage (Mittellinie °)<span class="live-tag">● live</span></span><input type="number" value="112"><input type="range" min="90" max="135" value="112"></div>
+        </div>
+        <div class="card"><h3><span>Zweites Profil (VTEC)</span><span style="color:var(--dim)">nur bei VTEC</span></h3>
+          <div class="field"><span>Umschaltdrehzahl<span class="live-tag">● live</span></span><input type="number" value="6200"><input type="range" min="1000" max="12000" step="100" value="6200"></div>
+          <div class="field"><span>Hysterese (U/min)<span class="live-tag">● live</span></span><input type="number" value="300"><input type="range" min="0" max="1000" step="50" value="300"></div>
+          <div class="field"><span>Hoher Einlass-Hub (mm)<span class="live-tag">● live</span></span><input type="number" value="11.5"><input type="range" min="3" max="22" step=".1" value="11.5"></div>
+          <div class="field"><span>Hohe Dauer (°)<span class="live-tag">● live</span></span><input type="number" value="240"><input type="range" min="150" max="330" value="240"></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-dyno">
+      <h1>Prüfstand &amp; Vergleich</h1>
+      <div class="sub">Messlauf auf dem laufenden Simulator – du hörst den Motor dabei. Fahre mit der Maus über einen Lauf, um ihn einzeln zu sehen.</div>
+      <div class="card">
+        <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+          <div class="seg"><span class="act">Beschleunigung</span><span>Stufen</span></div>
+          <span class="ctl">von <input type="number" value="3000" style="width:80px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px"> U/min</span>
+          <span class="ctl">Tempo <input type="number" value="600" style="width:70px;background:var(--bg);border:1px solid var(--line);color:var(--text);border-radius:6px;padding:4px"> U/min je s</span>
+          <span class="grow"></span>
+          <button class="primary">▶ Messlauf starten</button>
+        </div>
+      </div>
+      <div class="cols" style="grid-template-columns:2fr 1fr">
+        <div class="card"><h3><span>Drehmoment (Nm) und Leistung (PS)</span><span>━ Nm &nbsp; ┅ PS &nbsp; <span style="color:var(--red)">●</span> Klopfen &nbsp; ┆ Nockenumschaltung</span></h3><svg viewBox="0 0 640 340" width="100%" id="dyno-svg"></svg></div>
+        <div class="card runs"><h3><span>Läufe</span><span>CSV</span></h3>
+          <div class="run"><div class="sw" style="background:var(--orange)"></div><div><b>Lauf 3</b> · 278 Nm @ 6 600<div class="chg">Einlass-Lage 116° → 108°</div></div></div>
+          <div class="run"><div class="sw" style="background:var(--blue)"></div><div><b>Lauf 2</b> · 277 Nm @ 6 600<div class="chg">Umschaltdrehzahl 7 400 → 5 000</div></div></div>
+          <div class="run"><div class="sw" style="background:var(--green)"></div><div><b>Lauf 1</b> · 267 Nm @ 5 800<div class="chg">ohne Nockenumschaltung</div></div></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <aside class="only-tune">
+    <div class="scope"><h4><span>Motor</span><span>Ansicht ▾</span></h4>
+      <svg viewBox="0 0 300 190" width="100%">
+        <rect x="14" y="14" width="272" height="150" rx="8" fill="#12161a" stroke="#262d34"/>
+        <g id="cyls"></g>
+        <text x="150" y="182" text-anchor="middle">Zylinder, Kolben, Ventile – aus dem Datenstrom gezeichnet</text>
+      </svg>
+    </div>
+    <div class="scope"><h4><span>Zündung</span><span>Zündfolge 1-3-4-2</span></h4>
+      <svg viewBox="0 0 300 70" width="100%"><g id="firing"></g></svg>
+    </div>
+    <div class="scope"><h4><span>Abgasströmung</span><span>Auspuff</span></h4>
+      <svg viewBox="0 0 300 80" width="100%"><path id="exh" fill="none" stroke="var(--yellow)" stroke-width="1.6"/><line x1="0" x2="300" y1="40" y2="40" stroke="#262d34"/></svg>
+    </div>
+    <div class="hint">Diese Ansicht ersetzt das alte Simulatorfenster. Sie lässt sich ein- und ausklappen.</div>
+  </aside>
+
+  <aside class="only-build">
+    <div class="card" style="margin:0">
+      <h3><span>Zusammenfassung</span></h3>
+      <div class="kv"><span>Motor</span><b>VTEC I4</b><span>Hubraum</span><b>1 797 cm³</b><span>Verdichtung</span><b>11,8 : 1</b><span>Zündfolge</span><b>1-3-4-2</b><span>Ventiltrieb</span><b>VTEC</b></div>
+    </div>
+    <div class="card" style="margin:0">
+      <h3><span>Prüfung</span></h3>
+      <div class="ok">✓ Konfiguration gültig</div>
+      <div class="warn" style="margin-top:6px">⚠ Umschaltdrehzahl liegt über der Redline</div>
+    </div>
+    <button class="primary big" onclick="setMode('tune')">Motor laden und tunen →</button>
+    <div class="hint">Bis du lädst, läuft der alte Motor weiter. Gespeicherte Prüfstandsläufe bleiben erhalten und werden mit den geänderten Werten verglichen.</div>
+  </aside>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+function show(v) {
+  document.querySelectorAll('main section').forEach(s => s.classList.toggle('act', s.id === 'v-' + v));
+  document.querySelectorAll('nav a').forEach(a => a.classList.toggle('act', a.dataset.v === v));
+}
+function setMode(m) {
+  document.body.dataset.mode = m;
+  $('m-build').classList.toggle('act', m === 'build'); $('m-tune').classList.toggle('act', m === 'tune');
+  show(m === 'build' ? 'b-layout' : 'ign');
+}
+
+// Stirnansicht (Reihenmotor, 4 Zylinder)
+(function endView() {
+  let s = '<circle cx="260" cy="150" r="90" fill="none" stroke="#2c353d" stroke-dasharray="3 5"/>';
+  const bank = (x, label) => `<rect x="${x - 30}" y="20" width="60" height="120" rx="8" fill="#12161a" stroke="#2c353d"/><text x="${x}" y="14" text-anchor="middle">${label}</text>`;
+  s += bank(260, 'Bank 1 · 0°');
+  [[0, '1,4'], [180, '2,3']].forEach(([a, n]) => {
+    const r = a === 0 ? 90 : 90, x = 260 + Math.sin(a * Math.PI / 180) * r, y = 150 - Math.cos(a * Math.PI / 180) * r;
+    s += `<circle cx="${x}" cy="${y}" r="17" fill="#1b2127" stroke="#f4802a" stroke-width="2"/><text x="${x}" y="${y + 4}" text-anchor="middle" style="fill:#e6e9ec;font-size:12px">${n}</text>`;
+  });
+  s += '<circle cx="260" cy="150" r="7" fill="#2c353d"/><text x="260" y="285" text-anchor="middle">Kurbelwelle · Drehrichtung im Uhrzeigersinn</text>';
+  $('end-svg').innerHTML = s;
+})();
+
+// Zündkennfeld (Beispieldaten)
+const rpms = [500, 1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000], loads = [20, 40, 60, 80, 100];
+const A = rpms.map((r, i) => loads.map((l) => i === 0 ? 10 : Math.round(12 + Math.min(1, r / 4000) * 22 + (100 - l) * 0.22 - (r > 6000 ? 2 : 0))));
+A[4][0] = -50; A[5][0] = -50;
+const color = v => v < 0 ? '#b3272a' : `hsl(${210 - Math.min(1, v / 50) * 170}, 55%, ${24 + Math.min(1, v / 50) * 14}%)`;
+(function map() {
+  const W = 640, H = 330, L = 60, T = 14, cw = (W - L - 10) / rpms.length, ch = (H - T - 36) / loads.length;
+  let s = '';
+  loads.forEach((l, j) => s += `<text x="${L - 8}" y="${T + (loads.length - 1 - j) * ch + ch / 2 + 4}" text-anchor="end">${l} kPa</text>`);
+  rpms.forEach((r, i) => s += `<text x="${L + i * cw + cw / 2}" y="${H - 18}" text-anchor="middle">${r}</text>`);
+  rpms.forEach((r, i) => loads.forEach((l, j) => {
+    const x = L + i * cw, y = T + (loads.length - 1 - j) * ch;
+    s += `<rect x="${x + 1}" y="${y + 1}" width="${cw - 2}" height="${ch - 2}" rx="4" fill="${color(A[i][j])}"/><text x="${x + cw / 2}" y="${y + ch / 2 + 4}" text-anchor="middle" style="fill:#fff;font-size:12px">${A[i][j]}</text>`;
+  }));
+  const px = L + 3.4 * cw + cw / 2, py = T + (loads.length - 1 - 1.6) * ch + ch / 2;
+  s += `<circle cx="${px}" cy="${py}" r="9" fill="none" stroke="#fff" stroke-width="2.5"/><circle cx="${px}" cy="${py}" r="3" fill="#fff"/><text x="${W / 2}" y="${H - 2}" text-anchor="middle">U/min</text>`;
+  $('map-svg').innerHTML = s;
+})();
+
+// Ventilhub über 720° (Einlass blau, Auslass orange, hohes Profil gestrichelt)
+(function cam() {
+  const W = 900, H = 250, L = 40, T = 10, B = 28, X = a => L + a / 720 * (W - L - 10), Y = v => T + (1 - v / 14) * (H - T - B);
+  const lobe = (lift, dur, c) => a => { const d = Math.abs(a - c), h = dur / 2; return d >= h ? 0 : lift * Math.pow(Math.cos(Math.PI * d / (2 * h)), 2); };
+  const path = (f, col, w, dash) => `<path d="${Array.from({ length: 361 }, (_, i) => (i ? 'L' : 'M') + X(i * 2).toFixed(1) + ' ' + Y(f(i * 2)).toFixed(1)).join(' ')}" fill="none" stroke="${col}" stroke-width="${w}" ${dash ? 'stroke-dasharray="5 4" opacity=".7"' : ''}/>`;
+  let s = '';
+  for (let v = 0; v <= 14; v += 2) s += `<line x1="${L}" x2="${W - 10}" y1="${Y(v)}" y2="${Y(v)}" stroke="#20252a"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end">${v}</text>`;
+  [[0, 'OT'], [180, 'UT'], [360, 'OT (Ladungswechsel)'], [540, 'UT'], [720, 'OT']].forEach(([a, t]) => s += `<line x1="${X(a)}" x2="${X(a)}" y1="${T}" y2="${H - B}" stroke="#2c353d" stroke-dasharray="2 4"/><text x="${X(a)}" y="${H - 12}" text-anchor="middle">${t}</text>`);
+  s += path(lobe(11.5, 240, 360 + 110), '#77cee0', 1.6, true) + path(lobe(10.5, 232, 360 - 110), '#f4802a', 1.6, true);
+  s += path(lobe(6.9, 210, 360 + 116), '#77cee0', 3) + path(lobe(6.5, 190, 360 - 112), '#f4802a', 3);
+  $('cam-svg').innerHTML = s;
+})();
+
+// Prüfstand
+(function dyno() {
+  const W = 640, H = 340, L = 44, R = 10, T = 14, B = 30, X = r => L + (r - 3000) / 5800 * (W - L - R), Y = v => T + (1 - v / 300) * (H - T - B);
+  let s = '';
+  for (let v = 0; v <= 300; v += 50) s += `<line x1="${L}" x2="${W - R}" y1="${Y(v)}" y2="${Y(v)}" stroke="#20252a"/><text x="${L - 6}" y="${Y(v) + 3}" text-anchor="end">${v}</text>`;
+  for (let r = 3000; r <= 8000; r += 1000) s += `<text x="${X(r)}" y="${H - 12}" text-anchor="middle">${r}</text>`;
+  const curve = (c, k, sw) => `<path d="${Array.from({ length: 60 }, (_, i) => { const r = 3000 + i * 100; return [r, 190 + 75 * Math.sin((r - 2500) / 5200 * Math.PI) * k + (r > 6200 && k > 0.95 ? 14 : 0)]; }).map(([r, v], i) => (i ? 'L' : 'M') + X(r).toFixed(1) + ' ' + Y(v).toFixed(1)).join(' ')}" fill="none" stroke="${c}" stroke-width="${sw}"/>`;
+  s += `<g opacity=".25">${curve('#bdd869', 0.9, 2.2)}${curve('#77cee0', 1.0, 2.2)}</g>${curve('#f4802a', 1.05, 3.4)}`;
+  s += `<line x1="${X(6200)}" x2="${X(6200)}" y1="${T}" y2="${H - B}" stroke="#f4802a" stroke-dasharray="2 4"/><text x="${X(6200) + 4}" y="${T + 10}" style="fill:#f4802a">Nocken</text><text x="${(W + L) / 2}" y="${H - 1}" text-anchor="middle">U/min</text>`;
+  $('dyno-svg').innerHTML = s;
+})();
+
+// Seitenansicht: einfache Animation, nur zur Veranschaulichung
+let t = 0;
+function tick() {
+  t += 0.12;
+  $('cyls').innerHTML = [0, 1, 2, 3].map(i => { const y = 62 - Math.cos(t + [0, 3.14 * 1.5, 3.14, 3.14 * 0.5][i]) * 14;
+    return `<rect x="${34 + i * 62}" y="30" width="44" height="62" rx="4" fill="#0d1013" stroke="#2c353d"/><rect x="${38 + i * 62}" y="${y}" width="36" height="12" rx="3" fill="${i === 1 && Math.sin(t) > 0.6 ? '#f4802a' : '#9aa6b1'}"/><line x1="${56 + i * 62}" x2="${56 + i * 62}" y1="${y + 12}" y2="150" stroke="#5c6670" stroke-width="3"/>`; }).join('') + '<circle cx="150" cy="150" r="8" fill="#2c353d"/>';
+  $('firing').innerHTML = [0, 1, 2, 3].map(i => `<rect x="${10 + i * 70}" y="14" width="56" height="28" rx="6" fill="${Math.floor((t / 3.14 * 1.2) % 4) === i ? '#f4802a' : '#1b2127'}" stroke="#262d34"/><text x="${38 + i * 70}" y="33" text-anchor="middle" style="fill:#e6e9ec;font-size:12px">${[1, 3, 4, 2][i]}</text>`).join('');
+  $('exh').setAttribute('d', Array.from({ length: 60 }, (_, i) => `${i ? 'L' : 'M'}${i * 5} ${40 + Math.sin(i / 3 - t * 2) * 12 * Math.exp(-i / 70) + Math.sin(i / 1.3 - t * 3) * 4}`).join(' '));
+  const rpm = 3420 + Math.sin(t / 3) * 120; $('rpm').textContent = Math.round(rpm).toLocaleString('de-DE'); $('rpmbar').style.width = (rpm / 8400 * 100) + '%';
+  $('map').textContent = Math.round(64 + Math.sin(t / 2) * 3); $('nm').textContent = Math.round(212 + Math.sin(t / 2.5) * 4);
+  requestAnimationFrame(tick);
+}
+tick();
+</script>
+</body>
+</html>
