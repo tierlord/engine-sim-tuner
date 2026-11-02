@@ -78,6 +78,7 @@
 .mapgrid{display:grid;gap:2px}
 .mapgrid input{width:100%;border:0;border-radius:4px;text-align:center;color:#fff;font:12px/1.2 inherit;padding:9px 0;background:transparent;-moz-appearance:textfield}
 .mapgrid input::-webkit-outer-spin-button,.mapgrid input::-webkit-inner-spin-button{-webkit-appearance:none}
+.mapgrid input:focus{outline:2px solid #fff;outline-offset:-2px}
 .mapgrid .lab{color:var(--dim);font-size:10px;display:flex;align-items:center;justify-content:center}
 .opdot{position:absolute;width:22px;height:22px;margin:-11px 0 0 -11px;border:2.5px solid #fff;border-radius:50%;pointer-events:none;transition:left .12s linear,top .12s linear;box-shadow:0 0 8px #000}
 .opdot::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;background:#fff;border-radius:50%}

@@ -172,10 +172,27 @@ function renderMap() {
             cell.value = map.adv[i * map.load.length + j];
             cell.style.background = cellColor(+cell.value);
             cell.dataset.i = i; cell.dataset.j = j;
+            const index = i * map.load.length + j;
             cell.oninput = () => {
-                map.adv[i * map.load.length + j] = +cell.value;
+                if (cell.value === '') return;            // an empty field keeps the last value until ENTER decides
+                map.adv[index] = +cell.value;
                 cell.style.background = cellColor(+cell.value);
                 if (map.on) soon('map', pushMap, 150);
+            };
+
+            // The whole value is selected on entry, so the first keystroke replaces it
+            cell.onfocus = () => cell.select();
+            // A click would place the caret after the focus event and drop that selection, so the click is taken over
+            cell.onmousedown = e => {
+                if (document.activeElement === cell) return;
+                e.preventDefault();
+                cell.focus();
+                cell.select();
+            };
+            cell.onkeydown = e => {
+                if (e.key === 'Enter') { e.preventDefault(); commitCell(cell, index); return; }
+                const step = ARROW_STEPS[e.key];
+                if (step) { e.preventDefault(); focusCell(i + step[0], j + step[1]); }
             };
             grid.appendChild(cell);
         }
@@ -183,6 +200,24 @@ function renderMap() {
 
     grid.appendChild(document.createElement('div'));
     map.rpm.forEach(r => { const l = document.createElement('div'); l.className = 'lab'; l.textContent = r; grid.appendChild(l); });
+}
+
+// Arrow keys move through the map: [column (speed), row (load)]. Rows are drawn with high load on top.
+const ARROW_STEPS = { ArrowUp: [0, 1], ArrowDown: [0, -1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+
+function focusCell(i, j) {
+    const target = document.querySelector(`#map-grid input[data-i="${i}"][data-j="${j}"]`);
+    if (target) target.focus();                       // outside the map: stay where we are
+}
+
+// ENTER accepts the typed value at once and sends it to the engine
+function commitCell(cell, index) {
+    const value = parseFloat(cell.value);
+    if (Number.isNaN(value)) cell.value = map.adv[index];   // empty or not a number: keep the old value
+    else { map.adv[index] = value; cell.value = value; }
+    cell.style.background = cellColor(+cell.value);
+    if (map.on) pushMap();
+    cell.select();
 }
 
 function pushMap() {
