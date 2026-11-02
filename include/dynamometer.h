@@ -21,6 +21,9 @@ class Dynamometer : public atg_scs::Constraint {
 
         bool m_hold;
         bool m_enabled;
+
+        // A real brake dyno only brakes. With this set, hold mode may also drive the engine up to the held speed.
+        bool m_allowDriving = false;
 };
 
 #endif /* ATG_ENGINE_SIM_DYNAMOMETER_H */
