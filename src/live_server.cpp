@@ -194,7 +194,9 @@ void LiveServer::handleConnection(uintptr_t clientHandle) {
         (method == "POST" && path == "/engine")
         || (method == "POST" && path == "/dyno")
         || (method == "POST" && path == "/dyno/stop")
-        || (method == "GET" && path == "/dyno");
+        || (method == "GET" && path == "/dyno")
+        || (method == "GET" && path == "/telemetry")
+        || (method == "POST" && path == "/control");
 
     if (mainThreadRoute) {
         const bool needsBody = (method == "POST" && path == "/engine");

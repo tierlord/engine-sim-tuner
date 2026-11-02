@@ -16,6 +16,8 @@
 //   POST /dyno       -> starts a dyno run (body = "key=value" lines)
 //   POST /dyno/stop  -> aborts it
 //   GET  /dyno       -> progress and measured points
+//   GET  /telemetry  -> current engine values (rpm, load, ignition advance, knock, ...)
+//   POST /control    -> driver input as "key=value" lines (throttle, clutch, starter, ignition, shift, dyno ...)
 //
 // Requests are handed to the main thread (poll()), so the simulation is only touched from there.
 class LiveServer {

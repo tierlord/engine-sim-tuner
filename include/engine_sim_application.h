@@ -101,11 +101,6 @@ class EngineSimApplication {
         void refreshUserInterface();
 
     protected:
-        double m_speedSetting = 1.0;
-        double m_targetSpeedSetting = 1.0;
-
-        double m_clutchPressure = 1.0;
-        double m_targetClutchPressure = 1.0;
         int m_lastMouseWheel = 0;
 
     protected:
@@ -137,7 +132,6 @@ class EngineSimApplication {
 
         std::vector<SimulationObject *> m_objects;
         SimulationSession m_session;           // script, simulator, live tuning, dyno, builder server
-        double m_dynoSpeed;
         double m_torque;
 
         UiManager m_uiManager;

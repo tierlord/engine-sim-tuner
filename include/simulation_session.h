@@ -37,6 +37,14 @@ class SimulationSession {
             double seconds = 0.0;      // wall clock time spent in the simulation steps
         };
 
+        // What the driver does: set by the keyboard of the windowed application or by the server
+        struct DriverInput {
+            double throttle = 1.0;             // wanted speed control 0..1, smoothed in updateControls()
+            bool starter = false;
+            double clutchTarget = 1.0;         // 0 = pedal pressed, 1 = engaged
+            double clutchTimeConstant = 0.001; // seconds, how fast the clutch follows
+        };
+
         SimulationSession();
         ~SimulationSession();
 
@@ -51,6 +59,19 @@ class SimulationSession {
         void toggleLive();
         bool isLive() const { return m_live; }
         void updateLive(float dt);                             // file watcher, server requests, cam messages
+
+        // ---- driver controls ----------------------------------------------------------------------
+        DriverInput &input() { return m_input; }
+        void setAutoIgnition(bool enabled) { m_autoIgnition = enabled; }   // switch the ignition on whenever an engine is loaded
+        void updateControls(double dt);                        // call once per frame after changing input()
+        void toggleDyno();
+        void toggleDynoHold();
+        void adjustDynoHold(int direction);                    // -1, 0, +1 steps of the hold speed
+        void toggleIgnition();
+        void shift(int delta);                                 // +1 up, -1 down (-1 gear = neutral)
+        double dynoSpeed() const { return m_dynoSpeed; }
+        double smoothedThrottle() const { return m_speedSetting; }
+        double clutchPressure() const { return m_clutchPressure; }
 
         // ---- simulation ---------------------------------------------------------------------------
         // dt: real time of the frame; perStep is called after every simulation step
@@ -72,6 +93,8 @@ class SimulationSession {
         std::string applyLiveTuning(const std::string &path);
         std::string handleLiveRequest(const std::string &body);
         std::string handleLiveRoute(const std::string &method, const std::string &path, const std::string &body);
+        std::string telemetryJson();
+        std::string handleControl(const std::string &body);
         void log(const std::string &message);
 
         Engine *m_iceEngine = nullptr;
@@ -79,6 +102,14 @@ class SimulationSession {
         Transmission *m_transmission = nullptr;
         Simulator *m_simulator = nullptr;
         ApplicationSettings m_applicationSettings;
+
+        DriverInput m_input;
+        double m_speedSetting = 1.0;           // smoothed throttle
+        double m_loggedThrottle = 1.0;
+        double m_clutchPressure = 1.0;
+        double m_dynoSpeed = 0.0;
+        bool m_lastStarter = false;
+        bool m_autoIgnition = false;
 
         // Live mode: watches the file written by tools/engine-builder.html
         bool m_live = false;

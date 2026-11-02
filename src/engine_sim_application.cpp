@@ -61,7 +61,6 @@ EngineSimApplication::EngineSimApplication() {
     m_audioSource = nullptr;
 
     m_torque = 0;
-    m_dynoSpeed = 0;
 
     m_engineView = nullptr;
     m_rightGaugeCluster = nullptr;
@@ -651,44 +650,29 @@ void EngineSimApplication::processEngineInput() {
         m_infoCluster->setLogMessage("[N] - Set simulation freq to " + std::to_string(m_session.simulator()->getSimulationFrequency()));
     }
     else if (m_engine.IsKeyDown(ysKey::Code::G) && m_session.simulator()->m_dyno.m_hold) {
-        if (mouseWheelDelta > 0) {
-            m_dynoSpeed += m_session.engine()->getDynoHoldStep();
-        }
-        else if (mouseWheelDelta < 0) {
-            m_dynoSpeed -= m_session.engine()->getDynoHoldStep();
-        }
-
-        m_dynoSpeed = clamp(m_dynoSpeed, m_session.engine()->getDynoMinSpeed(), m_session.engine()->getDynoMaxSpeed());
-
-        m_infoCluster->setLogMessage("[G] - Set dyno speed to " + std::to_string(units::toRpm(m_dynoSpeed)));
+        m_session.adjustDynoHold(mouseWheelDelta > 0 ? 1 : (mouseWheelDelta < 0 ? -1 : 0));
         fineControlInUse = true;
     }
 
-    const double prevTargetThrottle = m_targetSpeedSetting;
-    m_targetSpeedSetting = fineControlMode ? m_targetSpeedSetting : 0.0;
+    double throttle = fineControlMode ? m_session.input().throttle : 0.0;
     if (m_engine.IsKeyDown(ysKey::Code::Q)) {
-        m_targetSpeedSetting = 0.01;
+        throttle = 0.01;
     }
     else if (m_engine.IsKeyDown(ysKey::Code::W)) {
-        m_targetSpeedSetting = 0.1;
+        throttle = 0.1;
     }
     else if (m_engine.IsKeyDown(ysKey::Code::E)) {
-        m_targetSpeedSetting = 0.2;
+        throttle = 0.2;
     }
     else if (m_engine.IsKeyDown(ysKey::Code::R)) {
-        m_targetSpeedSetting = 1.0;
+        throttle = 1.0;
     }
     else if (fineControlMode && !fineControlInUse) {
-        m_targetSpeedSetting = clamp(m_targetSpeedSetting + mouseWheelDelta * 0.0001);
+        throttle = clamp(throttle + mouseWheelDelta * 0.0001);
     }
 
-    if (prevTargetThrottle != m_targetSpeedSetting) {
-        m_infoCluster->setLogMessage("Speed control set to " + std::to_string(m_targetSpeedSetting));
-    }
+    m_session.input().throttle = throttle;
 
-    m_speedSetting = m_targetSpeedSetting * 0.5 + 0.5 * m_speedSetting;
-
-    m_session.engine()->setSpeedControl(m_speedSetting);
     if (m_engine.ProcessKeyDown(ysKey::Code::M)) {
         const int currentLayer = getViewParameters().Layer0;
         if (currentLayer + 1 < m_session.engine()->getMaxDepth()) {
@@ -706,114 +690,45 @@ void EngineSimApplication::processEngineInput() {
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::D)) {
-        m_session.simulator()->m_dyno.m_enabled = !m_session.simulator()->m_dyno.m_enabled;
-
-        const std::string msg = m_session.simulator()->m_dyno.m_enabled
-            ? "DYNOMOMETER ENABLED"
-            : "DYNOMOMETER DISABLED";
-        m_infoCluster->setLogMessage(msg);
+        m_session.toggleDyno();
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::H)) {
-        m_session.simulator()->m_dyno.m_hold = !m_session.simulator()->m_dyno.m_hold;
-
-        const std::string msg = m_session.simulator()->m_dyno.m_hold
-            ? m_session.simulator()->m_dyno.m_enabled ? "HOLD ENABLED" : "HOLD ON STANDBY [ENABLE DYNO. FOR HOLD]"
-            : "HOLD DISABLED";
-        m_infoCluster->setLogMessage(msg);
+        m_session.toggleDynoHold();
     }
 
-    if (m_session.simulator()->m_dyno.m_enabled) {
-        if (!m_session.simulator()->m_dyno.m_hold) {
-            if (m_session.simulator()->getFilteredDynoTorque() > units::torque(1.0, units::ft_lb)) {
-                m_dynoSpeed += units::rpm(500) * dt;
-            }
-            else {
-                m_dynoSpeed *= (1 / (1 + dt));
-            }
-
-            if (m_dynoSpeed > m_session.engine()->getRedline()) {
-                m_session.simulator()->m_dyno.m_enabled = false;
-                m_dynoSpeed = units::rpm(0);
-            }
-        }
-    }
-    else {
-        if (!m_session.simulator()->m_dyno.m_hold) {
-            m_dynoSpeed = units::rpm(0);
-        }
-    }
-
-    m_dynoSpeed = clamp(m_dynoSpeed, m_session.engine()->getDynoMinSpeed(), m_session.engine()->getDynoMaxSpeed());
-    m_session.simulator()->m_dyno.m_rotationSpeed = m_dynoSpeed;
-
-    const bool prevStarterEnabled = m_session.simulator()->m_starterMotor.m_enabled;
-    if (m_engine.IsKeyDown(ysKey::Code::S)) {
-        m_session.simulator()->m_starterMotor.m_enabled = true;
-    }
-    else {
-        m_session.simulator()->m_starterMotor.m_enabled = false;
-    }
-
-    if (prevStarterEnabled != m_session.simulator()->m_starterMotor.m_enabled) {
-        const std::string msg = m_session.simulator()->m_starterMotor.m_enabled
-            ? "STARTER ENABLED"
-            : "STARTER DISABLED";
-        m_infoCluster->setLogMessage(msg);
-    }
+    m_session.input().starter = m_engine.IsKeyDown(ysKey::Code::S);
 
     if (m_engine.ProcessKeyDown(ysKey::Code::A)) {
-        m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled =
-            !m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled;
-
-        const std::string msg = m_session.simulator()->getEngine()->getIgnitionModule()->m_enabled
-            ? "IGNITION ENABLED"
-            : "IGNITION DISABLED";
-        m_infoCluster->setLogMessage(msg);
+        m_session.toggleIgnition();
     }
 
     if (m_engine.ProcessKeyDown(ysKey::Code::Up)) {
-        m_session.simulator()->getTransmission()->changeGear(m_session.simulator()->getTransmission()->getGear() + 1);
-
-        m_infoCluster->setLogMessage(
-            "UPSHIFTED TO " + std::to_string(m_session.simulator()->getTransmission()->getGear() + 1));
+        m_session.shift(1);
     }
     else if (m_engine.ProcessKeyDown(ysKey::Code::Down)) {
-        m_session.simulator()->getTransmission()->changeGear(m_session.simulator()->getTransmission()->getGear() - 1);
-
-        if (m_session.simulator()->getTransmission()->getGear() != -1) {
-            m_infoCluster->setLogMessage(
-                "DOWNSHIFTED TO " + std::to_string(m_session.simulator()->getTransmission()->getGear() + 1));
-        }
-        else {
-            m_infoCluster->setLogMessage("SHIFTED TO NEUTRAL");
-        }
+        m_session.shift(-1);
     }
 
+    double clutchTarget = m_session.input().clutchTarget;
     if (m_engine.IsKeyDown(ysKey::Code::T)) {
-        m_targetClutchPressure -= 0.2 * dt;
+        clutchTarget -= 0.2 * dt;
     }
     else if (m_engine.IsKeyDown(ysKey::Code::U)) {
-        m_targetClutchPressure += 0.2 * dt;
+        clutchTarget += 0.2 * dt;
     }
     else if (m_engine.IsKeyDown(ysKey::Code::Shift)) {
-        m_targetClutchPressure = 0.0;
+        clutchTarget = 0.0;
         m_infoCluster->setLogMessage("CLUTCH DEPRESSED");
     }
     else if (!m_engine.IsKeyDown(ysKey::Code::Y)) {
-        m_targetClutchPressure = 1.0;
+        clutchTarget = 1.0;
     }
 
-    m_targetClutchPressure = clamp(m_targetClutchPressure);
+    m_session.input().clutchTarget = clamp(clutchTarget);
+    m_session.input().clutchTimeConstant = m_engine.IsKeyDown(ysKey::Code::Space) ? 1.0 : 0.001;
 
-    double clutchRC = 0.001;
-    if (m_engine.IsKeyDown(ysKey::Code::Space)) {
-        clutchRC = 1.0;
-    }
-
-    const double clutch_s = dt / (dt + clutchRC);
-    m_clutchPressure = m_clutchPressure * (1 - clutch_s) + m_targetClutchPressure * clutch_s;
-    m_session.simulator()->getTransmission()->setClutchPressure(m_clutchPressure);
+    m_session.updateControls(dt);
 }
 
 void EngineSimApplication::renderScene() {

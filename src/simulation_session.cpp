@@ -12,6 +12,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -224,6 +225,7 @@ void SimulationSession::loadEngine(Engine *engine, Vehicle *vehicle, Transmissio
     m_simulator = engine->createSimulator(vehicle, transmission);
 
     engine->calculateDisplacement();
+    engine->getIgnitionModule()->m_enabled = m_autoIgnition;
     m_simulator->setSimulationFrequency(engine->getSimulationFrequency());
 
     Synthesizer::AudioParameters audioParams = m_simulator->synthesizer().getAudioParameters();
@@ -359,6 +361,176 @@ void SimulationSession::updateLive(float dt) {
             reloadScript();
         }
     }
+}
+
+void SimulationSession::updateControls(double dt) {
+    if (m_iceEngine == nullptr || m_simulator == nullptr) return;
+
+    if (m_input.throttle != m_loggedThrottle) {
+        log("Speed control set to " + std::to_string(m_input.throttle));
+        m_loggedThrottle = m_input.throttle;
+    }
+
+    m_speedSetting = m_input.throttle * 0.5 + 0.5 * m_speedSetting;
+    m_iceEngine->setSpeedControl(m_speedSetting);
+
+    if (m_simulator->m_dyno.m_enabled) {
+        if (!m_simulator->m_dyno.m_hold) {
+            if (m_simulator->getFilteredDynoTorque() > units::torque(1.0, units::ft_lb)) {
+                m_dynoSpeed += units::rpm(500) * dt;
+            }
+            else {
+                m_dynoSpeed *= (1 / (1 + dt));
+            }
+
+            if (m_dynoSpeed > m_iceEngine->getRedline()) {
+                m_simulator->m_dyno.m_enabled = false;
+                m_dynoSpeed = units::rpm(0);
+            }
+        }
+    }
+    else {
+        if (!m_simulator->m_dyno.m_hold) {
+            m_dynoSpeed = units::rpm(0);
+        }
+    }
+
+    m_dynoSpeed = clamp(m_dynoSpeed, m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
+    m_simulator->m_dyno.m_rotationSpeed = m_dynoSpeed;
+
+    m_simulator->m_starterMotor.m_enabled = m_input.starter;
+    if (m_input.starter != m_lastStarter) {
+        log(m_input.starter ? "STARTER ENABLED" : "STARTER DISABLED");
+        m_lastStarter = m_input.starter;
+    }
+
+    m_input.clutchTarget = clamp(m_input.clutchTarget);
+    const double clutch_s = dt / (dt + m_input.clutchTimeConstant);
+    m_clutchPressure = m_clutchPressure * (1 - clutch_s) + m_input.clutchTarget * clutch_s;
+    m_simulator->getTransmission()->setClutchPressure(m_clutchPressure);
+}
+
+void SimulationSession::toggleDyno() {
+    if (m_simulator == nullptr) return;
+
+    m_simulator->m_dyno.m_enabled = !m_simulator->m_dyno.m_enabled;
+    log(m_simulator->m_dyno.m_enabled ? "DYNOMOMETER ENABLED" : "DYNOMOMETER DISABLED");
+}
+
+void SimulationSession::toggleDynoHold() {
+    if (m_simulator == nullptr) return;
+
+    m_simulator->m_dyno.m_hold = !m_simulator->m_dyno.m_hold;
+    log(m_simulator->m_dyno.m_hold
+        ? m_simulator->m_dyno.m_enabled ? "HOLD ENABLED" : "HOLD ON STANDBY [ENABLE DYNO. FOR HOLD]"
+        : "HOLD DISABLED");
+}
+
+void SimulationSession::adjustDynoHold(int direction) {
+    if (m_iceEngine == nullptr) return;
+
+    m_dynoSpeed += direction * m_iceEngine->getDynoHoldStep();
+    m_dynoSpeed = clamp(m_dynoSpeed, m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
+    log("[G] - Set dyno speed to " + std::to_string(units::toRpm(m_dynoSpeed)));
+}
+
+void SimulationSession::toggleIgnition() {
+    if (m_iceEngine == nullptr) return;
+
+    m_iceEngine->getIgnitionModule()->m_enabled = !m_iceEngine->getIgnitionModule()->m_enabled;
+    log(m_iceEngine->getIgnitionModule()->m_enabled ? "IGNITION ENABLED" : "IGNITION DISABLED");
+}
+
+void SimulationSession::shift(int delta) {
+    if (m_simulator == nullptr) return;
+
+    Transmission *transmission = m_simulator->getTransmission();
+    transmission->changeGear(transmission->getGear() + delta);
+
+    if (delta > 0) {
+        log("UPSHIFTED TO " + std::to_string(transmission->getGear() + 1));
+    }
+    else if (transmission->getGear() != -1) {
+        log("DOWNSHIFTED TO " + std::to_string(transmission->getGear() + 1));
+    }
+    else {
+        log("SHIFTED TO NEUTRAL");
+    }
+}
+
+static std::string jsonEscape(const std::string &in);
+
+// Everything the user interface shows while the engine runs
+std::string SimulationSession::telemetryJson() {
+    if (m_iceEngine == nullptr || m_simulator == nullptr) {
+        return "{\"ok\":true,\"engine\":false}";
+    }
+
+    char text[1400];
+    IgnitionModule *ignition = m_iceEngine->getIgnitionModule();
+    std::snprintf(text, sizeof(text),
+        "{\"ok\":true,\"engine\":true,\"name\":\"%s\",\"rpm\":%.1f,\"redline\":%.0f,"
+        "\"throttle\":%.3f,\"map_kpa\":%.1f,\"advance_deg\":%.1f,\"torque_nm\":%.1f,\"power_kw\":%.2f,"
+        "\"gear\":%d,\"clutch\":%.2f,\"speed_kmh\":%.1f,\"starter\":%s,\"ignition\":%s,"
+        "\"dyno\":%s,\"dyno_hold\":%s,\"knock\":%.3f,\"knock_events\":%ld,\"damage\":%.3f,\"destroyed\":%s,"
+        "\"octane\":%.0f,\"high_lift\":%s,\"live\":%s}",
+        jsonEscape(m_iceEngine->getName()).c_str(),
+        m_iceEngine->getRpm(),
+        units::toRpm(m_iceEngine->getRedline()),
+        m_speedSetting,
+        m_iceEngine->getManifoldPressure() / 1000.0,
+        ignition->getTimingAdvance() / units::deg,
+        units::convert(m_simulator->getFilteredDynoTorque(), units::Nm),
+        m_simulator->getDynoPower() / 1000.0,
+        m_simulator->getTransmission()->getGear() + 1,
+        m_simulator->getTransmission()->getClutchPressure(),
+        m_vehicle != nullptr ? m_vehicle->getSpeed() * 3.6 : 0.0,
+        m_simulator->m_starterMotor.m_enabled ? "true" : "false",
+        ignition->m_enabled ? "true" : "false",
+        m_simulator->m_dyno.m_enabled ? "true" : "false",
+        m_simulator->m_dyno.m_hold ? "true" : "false",
+        m_iceEngine->getKnockLevel(),
+        m_iceEngine->getKnockEventCount(),
+        m_iceEngine->getKnockDamage(),
+        m_iceEngine->isDestroyed() ? "true" : "false",
+        m_iceEngine->getFuel()->getOctane(),
+        (m_iceEngine->hasHighLift() && m_iceEngine->isHighLiftActive()) ? "true" : "false",
+        m_live ? "true" : "false");
+
+    return text;
+}
+
+// POST /control: lines "key=value" (throttle, clutch, starter, ignition, shift, dyno, dyno_hold, dyno_rpm)
+std::string SimulationSession::handleControl(const std::string &body) {
+    if (m_iceEngine == nullptr || m_simulator == nullptr) {
+        return "{\"ok\":false,\"error\":\"no engine\"}";
+    }
+
+    std::stringstream lines(body);
+    std::string line;
+    while (std::getline(lines, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+
+        const size_t eq = line.find('=');
+        if (eq == std::string::npos) continue;
+
+        const std::string key = line.substr(0, eq);
+        const double value = std::atof(line.substr(eq + 1).c_str());
+
+        if (key == "throttle") m_input.throttle = clamp(value);
+        else if (key == "clutch") m_input.clutchTarget = clamp(value);
+        else if (key == "starter") m_input.starter = value > 0.5;
+        else if (key == "ignition") { if ((value > 0.5) != m_iceEngine->getIgnitionModule()->m_enabled) toggleIgnition(); }
+        else if (key == "shift") shift(value > 0 ? 1 : -1);
+        else if (key == "gear") { m_simulator->getTransmission()->changeGear((int)value - 1); }
+        else if (key == "dyno") { if ((value > 0.5) != m_simulator->m_dyno.m_enabled) toggleDyno(); }
+        else if (key == "dyno_hold") { if ((value > 0.5) != m_simulator->m_dyno.m_hold) toggleDynoHold(); }
+        else if (key == "dyno_rpm") {
+            m_dynoSpeed = clamp(units::rpm(value), m_iceEngine->getDynoMinSpeed(), m_iceEngine->getDynoMaxSpeed());
+        }
+    }
+
+    return "{\"ok\":true}";
 }
 
 SimulationSession::StepResult SimulationSession::step(
@@ -683,6 +855,14 @@ std::string SimulationSession::handleLiveRoute(
         }
 
         return "{\"ok\":true}";
+    }
+
+    if (method == "GET" && path == "/telemetry") {
+        return telemetryJson();
+    }
+
+    if (method == "POST" && path == "/control") {
+        return handleControl(body);
     }
 
     return "{\"ok\":false,\"error\":\"unknown route\"}";

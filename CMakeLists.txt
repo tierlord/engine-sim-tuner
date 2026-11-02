@@ -308,6 +308,37 @@ endif (DISCORD_ENABLED)
 target_include_directories(engine-sim-app
     PUBLIC dependencies/submodules)
 
+# Windowless server: the simulation, the sound (SDL audio) and the HTTP interface, no Delta Studio window
+find_package(SDL2 REQUIRED)
+
+add_executable(engine-sim-server
+    src/server_main.cpp
+    src/simulation_session.cpp
+    src/live_server.cpp
+    src/dyno_sweep.cpp
+    include/simulation_session.h
+)
+
+target_include_directories(engine-sim-server
+    PUBLIC dependencies/submodules)
+
+# vcpkg provides SDL2::SDL2-static for the static triplets
+if (TARGET SDL2::SDL2-static)
+    set(ENGINE_SIM_SDL2_TARGET SDL2::SDL2-static)
+else ()
+    set(ENGINE_SIM_SDL2_TARGET SDL2::SDL2)
+endif ()
+
+target_link_libraries(engine-sim-server
+    engine-sim
+    engine-sim-script-interpreter
+    ${ENGINE_SIM_SDL2_TARGET})
+
+if (WIN32)
+    target_link_libraries(engine-sim-server
+        winmm imm32 version setupapi ole32 oleaut32 gdi32 user32 shell32 advapi32 ws2_32)
+endif (WIN32)
+
 add_subdirectory(dependencies)
 
 # GTEST
