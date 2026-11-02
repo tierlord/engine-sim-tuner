@@ -17,6 +17,7 @@
 //   POST /dyno       -> starts a dyno run (body = "key=value" lines)
 //   POST /dyno/stop  -> aborts it
 //   GET  /dyno       -> progress and measured points
+//   GET  /<file>     -> static files of the user interface (see setWebRoot), "/" is index.html
 //   GET  /events     -> Server-Sent Events: every publish() reaches all open streams. An open stream
 //                       tells the program that a user interface is alive (see streamCount()).
 //   GET  /telemetry  -> current engine values (rpm, load, ignition advance, knock, ...)
@@ -32,6 +33,7 @@ class LiveServer {
         ~LiveServer();
 
         bool start(int port);
+        void setWebRoot(const std::string &directory) { m_webRoot = directory; }   // GET of other paths serves files from here
         void stop();
         bool isRunning() const { return m_running; }
         int getPort() const { return m_port; }
@@ -45,6 +47,7 @@ class LiveServer {
 
     private:
         void serve();
+        bool serveFile(uintptr_t client, const std::string &path, const std::string &origin);
         bool handleConnection(uintptr_t client);          // true: the socket was kept as an event stream
         void closeStreams();
 
@@ -53,6 +56,7 @@ class LiveServer {
         uintptr_t m_listenSocket;
         int m_port;
 
+        std::string m_webRoot;
         std::mutex m_streamMutex;
         std::vector<uintptr_t> m_streams;
         std::atomic<int> m_streamCount;

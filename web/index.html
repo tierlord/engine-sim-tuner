@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Engine-Sim-Tuner</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body data-mode="tune">
+
+<header>
+  <div class="brand">Engine-Sim-<b>Tuner</b></div>
+  <div class="mode"><span id="m-build">Bauen</span><span id="m-tune" class="act">Tunen</span></div>
+  <div class="chip" id="conn"><i></i><span>verbinde …</span></div>
+  <div class="chip" id="engineName">kein Motor</div>
+  <div class="grow"></div>
+  <div class="ctl only-tune">Gas <input id="gas" type="range" min="0" max="100" value="0" title="Gaspedal"> <b id="gasv" style="color:var(--text);width:38px">0 %</b></div>
+  <button id="starter" class="only-tune" title="Gedrückt halten">Starter (halten)</button>
+  <button id="ign" class="only-tune">Zündung</button>
+</header>
+
+<div class="live only-tune">
+  <div class="tile rpm"><label>Drehzahl</label><div class="v"><span id="t-rpm">–</span> <small id="t-redline">U/min</small></div><div class="bar"><span id="t-rpmbar" style="width:0"></span></div></div>
+  <div class="tile"><label>Last (MAP)</label><div class="v"><span id="t-map">–</span> <small>kPa</small></div></div>
+  <div class="tile"><label>Zündwinkel</label><div class="v"><span id="t-adv">–</span> <small>° v. OT</small></div></div>
+  <div class="tile"><label>Drehmoment</label><div class="v"><span id="t-nm">–</span> <small id="t-ps"></small></div></div>
+  <div class="tile"><label>Klopfen</label><div class="v" id="t-knock-box"><span id="t-knock">–</span> <small>%</small></div></div>
+  <div class="tile"><label>Motorschaden</label><div class="v" id="t-dmg-box"><span id="t-dmg">–</span> <small>%</small></div></div>
+  <div class="tile"><label>Nocken</label><div class="v" id="t-cam">–</div></div>
+</div>
+<div class="live only-build" id="build-bar"><div class="tile"><label>Bauen</label><div class="v" style="font-size:16px">Der Motor wird hier zusammengestellt</div></div></div>
+
+<div class="body">
+  <nav class="only-tune" id="nav-tune">
+    <a data-v="ign" class="act">Zündung</a>
+    <a data-v="fuel">Gemisch &amp; Kraftstoff <small>folgt</small></a>
+    <a data-v="cam">Ventiltrieb <small>folgt</small></a>
+    <a data-v="air">Ansaugung &amp; Abgas <small>später</small></a>
+    <a data-v="turbo">Aufladung <small>später</small></a>
+    <hr>
+    <a data-v="dyno">Prüfstand &amp; Vergleich <small>folgt</small></a>
+  </nav>
+  <nav class="only-build" id="nav-build"><a data-v="b-layout" class="act">Anordnung <small>folgt</small></a></nav>
+
+  <main>
+    <section id="v-ign" class="act">
+      <h1>Zündung</h1>
+      <div class="sub">Der weiße Punkt zeigt, wo der Motor gerade im Kennfeld arbeitet. Änderungen wirken sofort.</div>
+      <div class="cols">
+        <div class="card">
+          <h3><span>Zündkennfeld · Zündwinkel in ° vor OT <span class="live-tag">● live</span></span><span><label><input type="checkbox" id="map-on"> aktiv</label></span></h3>
+          <div class="cell-grid" id="map-wrap"><div class="mapgrid" id="map-grid"></div><div class="opdot hidden" id="opdot"></div></div>
+          <div class="sub" style="margin:8px 0 0">Zahl eintippen oder mit ↑/↓ ändern · rot = sehr spät, blau = früh · Spalten: Drehzahl, Zeilen: Last</div>
+        </div>
+        <div>
+          <div class="card" id="curve-card">
+            <h3><span>Zündkurve (ohne Kennfeld)</span></h3>
+            <div class="field"><span>Leerlauf (°)<span class="live-tag">● live</span></span><input type="number" id="c-idle" step="0.5"><input type="range" id="c-idle-r" min="0" max="45" step="0.5"></div>
+            <div class="field"><span>Maximum ab 4 000 U/min (°)<span class="live-tag">● live</span></span><input type="number" id="c-max" step="0.5"><input type="range" id="c-max-r" min="0" max="50" step="0.5"></div>
+          </div>
+          <div class="card">
+            <h3><span>Begrenzer &amp; Start</span></h3>
+            <div class="field"><span>Drehzahlbegrenzer (U/min)<span class="live-tag">● live</span></span><input type="number" id="c-rev" step="100"><input type="range" id="c-rev-r" min="3000" max="14000" step="100"></div>
+            <div class="field"><span>Leerlauf-Drosselstellung<span class="live-tag">● live</span></span><input type="number" id="c-idlethr" step="0.001"><input type="range" id="c-idlethr-r" min="0.9" max="1" step="0.001"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="v-soon"><h1 id="soon-title">–</h1><div class="card note" id="soon-text"></div></section>
+    <section id="v-b-layout"><h1>Anordnung</h1><div class="sub">Das Bauen zieht als Nächstes in diese Oberfläche um.</div>
+      <div class="card note">Bis dahin stellst du den Motor im bisherigen Builder zusammen (<code>tools/engine-builder.html</code>). Er spricht mit demselben Server und lädt den Motor hierher. Danach erscheinen die Werte in „Tunen“.</div></section>
+  </main>
+
+  <aside>
+    <div class="card" style="margin:0"><h3><span>Verbindung</span></h3><div class="kv" id="kv"></div></div>
+    <div class="hint note">Motoransicht, Zündfolge und Abgasströmung folgen in dieser Spalte.</div>
+  </aside>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

@@ -7,6 +7,8 @@
 #include <cctype>
 #include <chrono>
 #include <cstdlib>
+#include <fstream>
+#include <iterator>
 
 #pragma comment(lib, "ws2_32.lib")
 
@@ -49,6 +51,42 @@ namespace {
         r += "Connection: close\r\n\r\n";
         return r + body;
     }
+}
+
+namespace {
+    const char *contentType(const std::string &path) {
+        const size_t dot = path.rfind('.');
+        const std::string ext = dot == std::string::npos ? "" : lower(path.substr(dot + 1));
+        if (ext == "html") return "text/html; charset=utf-8";
+        if (ext == "js" || ext == "mjs") return "text/javascript; charset=utf-8";
+        if (ext == "css") return "text/css; charset=utf-8";
+        if (ext == "json") return "application/json";
+        if (ext == "svg") return "image/svg+xml";
+        if (ext == "png") return "image/png";
+        if (ext == "ico") return "image/x-icon";
+        return "application/octet-stream";
+    }
+}
+
+// Static files of the user interface. Only plain relative paths below the web root are served.
+bool LiveServer::serveFile(uintptr_t clientHandle, const std::string &rawPath, const std::string &origin) {
+    SOCKET client = (SOCKET)clientHandle;
+    std::string path = rawPath.substr(0, rawPath.find('?'));
+    if (path == "/") path = "/index.html";
+
+    const bool safe = !m_webRoot.empty() && path.size() > 1 && path[0] == '/'
+        && path.find("..") == std::string::npos && path.find('\\') == std::string::npos
+        && path.find(':') == std::string::npos && path.find('\0') == std::string::npos && path.find("//") == std::string::npos;
+    if (!safe) return false;
+
+    std::ifstream file(m_webRoot + path, std::ios::binary);
+    if (!file) return false;
+    const std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+
+    std::string r = "HTTP/1.1 200 OK\r\nContent-Type: " + std::string(contentType(path)) + "\r\n";
+    r += "Cache-Control: no-store\r\nContent-Length: " + std::to_string(content.size()) + "\r\nConnection: close\r\n\r\n";
+    sendAll(client, r + content);
+    return true;
 }
 
 LiveServer::LiveServer() {
@@ -219,6 +257,8 @@ bool LiveServer::handleConnection(uintptr_t clientHandle) {
         || (method == "POST" && path == "/dyno/stop")
         || (method == "GET" && path == "/dyno")
         || (method == "GET" && path == "/telemetry")
+        || (method == "GET" && path == "/tune")
+        || (method == "POST" && path == "/tune")
         || (method == "POST" && path == "/control");
 
     if (mainThreadRoute) {
@@ -254,6 +294,8 @@ bool LiveServer::handleConnection(uintptr_t clientHandle) {
         }
         return false;
     }
+
+    if (method == "GET" && serveFile((uintptr_t)client, path, origin)) return false;
 
     sendAll(client, response(404, "Not Found", origin, "{\"ok\":false,\"error\":\"unknown route\"}"));
     return false;

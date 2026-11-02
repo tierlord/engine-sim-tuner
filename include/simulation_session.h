@@ -13,6 +13,7 @@
 #include <deque>
 #include <filesystem>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -91,7 +92,9 @@ class SimulationSession {
     private:
         void loadEngine(Engine *engine, Vehicle *vehicle, Transmission *transmission);
         void loadImpulseResponses();
-        std::string applyLiveTuning(const std::string &path);
+        std::string applyLiveTuning(const std::string &path);                       // all values of a script header
+        std::string applyLiveValues(const std::map<std::string, std::string> &values, bool partial);
+        std::string tuningJson() const;
         std::string handleLiveRequest(const std::string &body);
         std::string handleLiveRoute(const std::string &method, const std::string &path, const std::string &body);
         std::string handleControl(const std::string &body);
@@ -124,6 +127,7 @@ class SimulationSession {
         std::string m_lastCamHigh;
         bool m_lastHighLift = false;                       // for the "CAM: HIGH LIFT" message
         int m_lastRepairCounter = -1;          // "engine_repair" counter of the engine builder
+        std::map<std::string, std::string> m_tuning;        // live values currently in effect (GET /tune)
         std::string m_liveStructure;           // structure hash of the engine currently loaded in live mode
         Function *m_liveTimingCurve = nullptr; // timing curve created by applyLiveTuning
 };

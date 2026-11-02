@@ -31,6 +31,12 @@ static std::string liveEngineFile() {
 }
 static constexpr int LiveServerPort = 8765;
 
+// ENGINE_SIM_WEB: folder with the user interface (index.html ...)
+static std::string webRoot() {
+    const char *value = std::getenv("ENGINE_SIM_WEB");
+    return (value != nullptr && value[0] != 0) ? value : "../web";
+}
+
 // Header lines written by tools/engine-builder.html:
 //   // builder:structure <hash>         hash of everything that needs a full reload
 //   // builder:live <key> <values...>   values that can be changed while the engine runs
@@ -302,6 +308,7 @@ void SimulationSession::toggleLive() {
         const int port = (portOverride != nullptr && std::atoi(portOverride) > 0)
             ? std::atoi(portOverride)
             : LiveServerPort;
+        m_liveServer.setWebRoot(webRoot());
         listening = m_liveServer.start(port);
     }
     else {
@@ -466,6 +473,17 @@ void SimulationSession::shift(int delta) {
 
 static std::string jsonEscape(const std::string &in);
 
+std::string SimulationSession::tuningJson() const {
+    std::string out = "{\"ok\":true,\"values\":{";
+    bool first = true;
+    for (const auto &entry : m_tuning) {
+        if (!first) out += ",";
+        first = false;
+        out += "\"" + jsonEscape(entry.first) + "\":\"" + jsonEscape(entry.second) + "\"";
+    }
+    return out + "}}";
+}
+
 // Everything the user interface shows while the engine runs
 std::string SimulationSession::telemetryJson() {
     if (m_iceEngine == nullptr || m_simulator == nullptr) {
@@ -576,12 +594,29 @@ void SimulationSession::shutdown() {
 }
 
 std::string SimulationSession::applyLiveTuning(const std::string &path) {
-    const LiveHeader header = readLiveHeader(path.c_str());
+    return applyLiveValues(readLiveHeader(path.c_str()).values, false);
+}
+
+// partial = true: only the keys that are present change (POST /tune); false: a complete script header,
+// a missing ignition map then means "map off"
+std::string SimulationSession::applyLiveValues(const std::map<std::string, std::string> &values, bool partial) {
     std::string applied;
 
+    if (!partial) m_tuning = values;
+    else for (const auto &entry : values) m_tuning[entry.first] = entry.second;
+
+    // one-shot commands are not values: "map_off" removes the map, "repair" is an event
+    if (partial && values.count("map_off")) {
+        m_tuning.erase("map_rpm");
+        m_tuning.erase("map_load");
+        m_tuning.erase("map_adv");
+    }
+    m_tuning.erase("map_off");
+    m_tuning.erase("repair");
+
     auto number = [&](const char *key, double *out) {
-        const auto it = header.values.find(key);
-        if (it == header.values.end()) return false;
+        const auto it = values.find(key);
+        if (it == values.end()) return false;
         char *end = nullptr;
         *out = std::strtod(it->second.c_str(), &end);
         return end != it->second.c_str();
@@ -620,10 +655,12 @@ std::string SimulationSession::applyLiveTuning(const std::string &path) {
     // Cam profiles. cam_low / cam_high: intake lift [mm], intake duration [deg at 0.050 in], exhaust lift [mm],
     // exhaust duration [deg]; cam_switch: speed [rpm], hysteresis [rpm], minimum throttle [%], minimum manifold pressure [kPa]
     {
-        const auto low = header.values.find("cam_low");
-        const auto high = header.values.find("cam_high");
-        const std::string lowText = low != header.values.end() ? low->second : "";
-        const std::string highText = high != header.values.end() ? high->second : "";
+        const auto low = values.find("cam_low");
+        const auto high = values.find("cam_high");
+        std::string lowText = low != values.end() ? low->second : "";
+        std::string highText = high != values.end() ? high->second : "";
+        if (partial && low == values.end()) lowText = m_lastCamLow;
+        if (partial && high == values.end()) highText = m_lastCamHigh;
 
         if (lowText != m_lastCamLow || highText != m_lastCamHigh) {
             auto parse = [](const std::string &text) {
@@ -668,8 +705,8 @@ std::string SimulationSession::applyLiveTuning(const std::string &path) {
             m_lastCamHigh = highText;
         }
 
-        const auto sw = header.values.find("cam_switch");
-        if (sw != header.values.end()) {
+        const auto sw = values.find("cam_switch");
+        if (sw != values.end()) {
             std::stringstream ss(sw->second);
             double rpm = 0, hysteresis = 0, throttle = 0, manifold = 0;
             if (ss >> rpm >> hysteresis >> throttle >> manifold) {
@@ -703,8 +740,8 @@ std::string SimulationSession::applyLiveTuning(const std::string &path) {
         m_lastRepairCounter = counter;
     }
 
-    const auto curve = header.values.find("timing_curve");
-    if (curve != header.values.end()) {
+    const auto curve = values.find("timing_curve");
+    if (curve != values.end()) {
         // format: "<rpm>:<deg> <rpm>:<deg> ..."
         std::vector<std::pair<double, double>> samples;
         std::stringstream ss(curve->second);
@@ -740,8 +777,8 @@ std::string SimulationSession::applyLiveTuning(const std::string &path) {
     // Ignition map (advance over speed and manifold pressure): replaces the curve while it is present
     auto numbers = [&](const char *key, double scale) {
         std::vector<double> out;
-        const auto it = header.values.find(key);
-        if (it == header.values.end()) return out;
+        const auto it = values.find(key);
+        if (it == values.end()) return out;
 
         std::stringstream ss(it->second);
         double value;
@@ -757,9 +794,14 @@ std::string SimulationSession::applyLiveTuning(const std::string &path) {
         ignition->setTimingMap(mapSpeeds, mapLoads, mapAdvance);
         applied += ignition->hasTimingMap() ? " ignition_map" : " ignition_map_INVALID";
     }
-    else if (ignition->hasTimingMap()) {
+    else if ((!partial || values.count("map_off")) && ignition->hasTimingMap()) {
         ignition->clearTimingMap();
         applied += " ignition_map_off";
+    }
+
+    if (partial && values.count("repair")) {
+        m_iceEngine->repairKnockDamage();
+        applied += " repaired";
     }
 
     {
@@ -861,6 +903,27 @@ std::string SimulationSession::handleLiveRoute(
         }
 
         return "{\"ok\":true}";
+    }
+
+    if (method == "GET" && path == "/tune") {
+        return tuningJson();
+    }
+
+    if (method == "POST" && path == "/tune") {
+        if (m_iceEngine == nullptr) return "{\"ok\":false,\"error\":\"no engine\"}";
+
+        // lines "key value ..." like the "// builder:live" header of an engine script
+        std::map<std::string, std::string> values;
+        std::stringstream lines(body);
+        std::string line;
+        while (std::getline(lines, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
+            const size_t space = line.find(' ');
+            if (space != std::string::npos && space > 0) values[line.substr(0, space)] = line.substr(space + 1);
+        }
+
+        const std::string applied = applyLiveValues(values, true);
+        return "{\"ok\":true,\"message\":\"" + jsonEscape(applied) + "\"}";
     }
 
     if (method == "GET" && path == "/telemetry") {
