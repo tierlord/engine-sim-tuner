@@ -24,11 +24,6 @@ jobs:
           & "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sdl2 sdl2-image boost-filesystem --triplet x64-windows-static-md
           "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
-      - name: Patch submodules
-        run: |
-          git -C dependencies/submodules/piranha apply ../../../patches/piranha-local.patch
-          git -C dependencies/submodules/delta-studio apply ../../../patches/delta-studio-local.patch
-
       - name: Build
         shell: cmd
         run: tools\windows-build\build.bat
@@ -65,9 +60,6 @@ jobs:
 
       - name: Dependencies
         run: sudo apt-get update && sudo apt-get install -y cmake libsdl2-dev libsdl2-image-dev libboost-filesystem-dev flex bison libgl-dev
-
-      - name: Patch submodules
-        run: scripts/apply-linux-patches.sh
 
       - name: Build
         run: |

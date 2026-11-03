@@ -7,7 +7,7 @@ Ziel des Nutzers: ein **Tuning-/Vergleichswerkzeug**, das zeigt, welche Änderun
 
 ## Stand
 
-Alles unten ist committet (Branch `master`). Die Submodule `delta-studio`, `piranha` und `simple-2d-constraint-solver` haben lokale Änderungen, die **nur als Patches** unter `patches/` im Repository liegen (Windows: `*-local.patch`, Linux: `patches/linux/`).
+Alles unten ist committet (Branch `master`). Die Submodule `delta-studio`, `piranha` und `simple-2d-constraint-solver` zeigen auf Forks unter `github.com/tierlord/` (Branch `tuner`) mit dem Linux-Port und den Windows-Fixes. Änderungen daran: im Submodul committen und pushen, danach im Hauptrepo den neuen Stand committen.
 
 Neuer als die Tabelle unten: Lambda je Luftmasse (Live-Wert und Kennfeld), Abgasturbolader (`include/turbo.h`, `src/turbo.cpp`, Ton, Kennfeld für den Soll-Ladedruck), `TuningMap` (`include/tuning_map.h`), Cockpit-Oberfläche in `web/` (Tabelle mit Reitern Zündung/Lambda/Ladedruck, Schnellregler, fester Prüfstand unten, Anzeigefilter), Speichern von Motoren über `POST /save`.
 
@@ -28,9 +28,8 @@ Neuer als die Tabelle unten: Lambda je Luftmasse (Live-Wert und Kennfeld), Abgas
 2. vcpkg klonen und bootstrappen, dann `vcpkg install sdl2 sdl2-image boost-filesystem --triplet x64-windows-static-md`. Umgebungsvariable **`VCPKG_ROOT`** auf den vcpkg-Ordner setzen.
 3. `winget install WinFlexBison.win_flex_bison` (danach eine neue Konsole öffnen).
 4. Repository holen (Branch `tuner`) und `git submodule update --init --recursive`.
-5. **Lokale Submodul-Fixes anwenden** (die Änderungen liegen nicht in den Submodul-Repos): `git -C dependencies/submodules/piranha apply ../../../patches/piranha-local.patch` und `git -C dependencies/submodules/delta-studio apply ../../../patches/delta-studio-local.patch`.
-6. `tools\windows-build\build.bat` im Projektordner (baut `engine-sim-server` und `engine-sim-app` nach `build\`; frische Konfiguration getestet).
-7. `build\engine-sim-server.exe` starten: öffnet die Oberfläche. Ohne Motor beginnt sie im Bauen. Der Ordner `assets/engines/custom/` wird beim ersten „Motor laden“ angelegt.
+5. `tools\windows-build\build.bat` im Projektordner (baut `engine-sim-server` und `engine-sim-app` nach `build\`; frische Konfiguration getestet).
+6. `build\engine-sim-server.exe` starten: öffnet die Oberfläche. Ohne Motor beginnt sie im Bauen. Der Ordner `assets/engines/custom/` wird beim ersten „Motor laden“ angelegt.
 
 **Nicht in Git:** die eigene Motordatei `assets/engines/custom/live_engine.mr`, der Zustand im Browser (Bauen-Einstellungen, Messläufe) – im Bauen mit „Konfig speichern“ als JSON sichern, „Konfig laden“ holt sie zurück –, die Test-Programme im Scratchpad.
 ## Bauen und Starten

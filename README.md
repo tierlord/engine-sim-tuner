@@ -22,10 +22,9 @@ On Windows, a CI build publishes a ready-to-run zip (see the Actions tab and the
 2. vcpkg: `vcpkg install sdl2 sdl2-image boost-filesystem --triplet x64-windows-static-md`, and set `VCPKG_ROOT` to the vcpkg folder.
 3. `winget install WinFlexBison.win_flex_bison` (open a new console afterwards).
 4. `git clone --recurse-submodules <this repository>`
-5. Apply the fixes for the submodules: `git -C dependencies/submodules/piranha apply ../../../patches/piranha-local.patch` and `git -C dependencies/submodules/delta-studio apply ../../../patches/delta-studio-local.patch`
-6. Run `tools\windows-build\build.bat` (builds `engine-sim-server` and `engine-sim-app` into `build\`).
+5. Run `tools\windows-build\build.bat` (builds `engine-sim-server` and `engine-sim-app` into `build\`).
 
-The submodule patches are needed on every platform because the changes do not live in the submodule repositories.
+The submodules `delta-studio`, `piranha` and `simple-2d-constraint-solver` point to forks (`tuner` branch) that contain the build fixes and the Linux port, so no patching is needed.
 
 ---
 
@@ -121,8 +120,7 @@ On Linux the simulator runs as the headless server `engine-sim-server`. It provi
 
 1. Clone with submodules: `git clone --recurse-submodules https://github.com/tierlord/engine-sim-tuner`
 2. Install the build dependencies (Debian/Ubuntu): `sudo apt install cmake libsdl2-dev libsdl2-image-dev libboost-filesystem-dev flex bison libgl-dev`
-3. Apply the Linux patches to the submodules: `scripts/apply-linux-patches.sh`
-4. Configure and build:
+3. Configure and build:
 
 ```bash
 cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
@@ -132,7 +130,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --target engine-sim-server
 ```
 
-5. Start the server from the `build` directory, because the asset paths are relative to it: `cd build && ./engine-sim-server`. It opens the interface in the default browser. Use `--no-open` to skip that.
+4. Start the server from the `build` directory, because the asset paths are relative to it: `cd build && ./engine-sim-server`. It opens the interface in the default browser. Use `--no-open` to skip that.
 
 Discord Rich Presence is disabled on Linux, the bundled `discord-rpc` library only exists for Windows.
 
