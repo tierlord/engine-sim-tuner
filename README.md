@@ -1,5 +1,9 @@
 # Engine Sim Tuner
 
+![The tuning cockpit](docs/cockpit.webp)
+
+> **Note:** The user interface is currently **German only**. The code, comments and this README are in English.
+
 A tuning and comparison tool built on [ange-yaghi/engine-sim](https://github.com/ange-yaghi/engine-sim). It shows what a change (camshaft, ignition, mixture, boost ...) does to the way an engine runs, with realism as a nice-to-have.
 
 **What is new compared to the original**
