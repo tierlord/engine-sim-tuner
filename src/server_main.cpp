@@ -30,6 +30,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <iostream>
 #include <mutex>
 #include <string>
@@ -45,6 +46,33 @@ namespace {
 
 std::atomic<bool> g_running{true};
 void onSignal(int) { g_running = false; }
+
+// The scripts and the interface are found relative to the folder the program starts in ("../assets", "../web").
+// When it is started from somewhere else (double click, another working directory), go to the folder of the
+// executable instead, as long as the project layout (bin/ or build/ next to assets/ and web/) is there.
+void enterProjectLayout() {
+    namespace fs = std::filesystem;
+    std::error_code ec;
+    if (std::getenv("ENGINE_SIM_WEB") != nullptr || fs::exists("../web/index.html", ec)) return;
+
+    fs::path exe;
+#ifdef _WIN32
+    char buffer[MAX_PATH];
+    const DWORD n = GetModuleFileNameA(nullptr, buffer, MAX_PATH);
+    if (n > 0 && n < MAX_PATH) exe = buffer;
+#else
+    exe = fs::read_symlink("/proc/self/exe", ec);
+#endif
+    const fs::path dir = exe.parent_path();
+    if (!dir.empty() && fs::exists(dir / ".." / "web" / "index.html", ec)) {
+        fs::current_path(dir, ec);
+        std::printf("[server] working folder: %s\n", dir.string().c_str());
+    }
+    else {
+        std::printf("[server] warning: interface not found (expected ../web/index.html next to the working folder); "
+                    "start from the build folder or set ENGINE_SIM_WEB\n");
+    }
+}
 
 // Starts the user interface. Only loopback addresses are accepted.
 void launchInterface(const std::string &url) {
@@ -116,6 +144,7 @@ void audioCallback(void *, Uint8 *stream, int length) {
 }
 
 int main(int argc, char **argv) {
+    enterProjectLayout();
     double throttle = 0.0;
     bool exitWhenIdle = true;
     bool openInterface = true;
