@@ -1,6 +1,6 @@
 @echo off
-set R=C:\Users\joey7\Documents\Code\engine-sim
-set V=C:\Users\joey7\vcpkg\installed\x64-windows-static-md
+set R=C:\path\to\engine-sim-tuner
+set V=%VCPKG_ROOT%\installed\x64-windows-static-md
 set H=%~dp0
 cd /d %R%\build
 cl /nologo /std:c++17 /EHsc /MD /O1 -DATG_ENGINE_SIM_PIRANHA_ENABLED -DBOOST_FILESYSTEM_NO_LIB -DBOOST_FILESYSTEM_STATIC_LINK=1 /I%R% /I%R%\include /I%R%\dependencies\submodules /I%R%\dependencies\submodules\piranha\include /I%R%\dependencies\submodules\csv-io\include /I%R%\dependencies\submodules\simple-2d-constraint-solver\include /I%R%\dependencies\submodules\delta-studio\include /I%V%\include /I%V%\include\SDL2 /Fe%H%%1.exe /Fo%H% %H%%1.cpp engine-sim-script-interpreter.lib engine-sim.lib dependencies\submodules\piranha\piranha.lib dependencies\submodules\csv-io\csv-io.lib dependencies\submodules\simple-2d-constraint-solver\simple-2d-constraint-solver.lib %V%\lib\boost_filesystem-vc145-mt-x64-1_92.lib %V%\lib\boost_atomic-vc145-mt-x64-1_92.lib %V%\lib\SDL2-static.lib bcrypt.lib winmm.lib imm32.lib version.lib setupapi.lib ole32.lib oleaut32.lib gdi32.lib user32.lib shell32.lib advapi32.lib

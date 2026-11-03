@@ -5,9 +5,11 @@ Ziel des Nutzers: ein **Tuning-/Vergleichswerkzeug**, das zeigt, welche Änderun
 
 **Sprache:** Mit dem Nutzer auf **Deutsch** und per **du** schreiben.
 
-## Stand (noch nichts committet)
+## Stand
 
-Alles unten ist im Arbeitsverzeichnis, aber **nicht in Git**. Auch die Submodule `delta-studio` und `piranha` haben lokale Änderungen.
+Alles unten ist committet (Branch `master`). Die Submodule `delta-studio`, `piranha` und `simple-2d-constraint-solver` haben lokale Änderungen, die **nur als Patches** unter `patches/` im Repository liegen (Windows: `*-local.patch`, Linux: `patches/linux/`).
+
+Neuer als die Tabelle unten: Lambda je Luftmasse (Live-Wert und Kennfeld), Abgasturbolader (`include/turbo.h`, `src/turbo.cpp`, Ton, Kennfeld für den Soll-Ladedruck), `TuningMap` (`include/tuning_map.h`), Cockpit-Oberfläche in `web/` (Tabelle mit Reitern Zündung/Lambda/Ladedruck, Schnellregler, fester Prüfstand unten, Anzeigefilter), Speichern von Motoren über `POST /save`.
 
 | Bereich | Inhalt |
 |---|---|
@@ -33,7 +35,7 @@ Alles unten ist im Arbeitsverzeichnis, aber **nicht in Git**. Auch die Submodule
 **Nicht in Git:** die eigene Motordatei `assets/engines/custom/live_engine.mr`, der Zustand im Browser (Bauen-Einstellungen, Messläufe) – im Bauen mit „Konfig speichern“ als JSON sichern, „Konfig laden“ holt sie zurück –, die Test-Programme im Scratchpad.
 ## Bauen und Starten
 
-- Toolchain: MSVC (VS 2026), CMake/Ninja, vcpkg in `C:\Users\joey7\vcpkg` (Triplet `x64-windows-static-md`), WinFlexBison.
+- Toolchain: MSVC (VS 2026), CMake/Ninja, vcpkg (Pfad über `VCPKG_ROOT`) (Triplet `x64-windows-static-md`), WinFlexBison.
 - Build-Ordner `build/` (gitignored); `tools\windows-build\build.bat` baut alles (`BUILD_DIR` ändert den Ordner). Exe **aus `build\` starten** (relative Pfade `../assets`).
 - Lokale Submodul-Fixes: `piranha/src/path.cpp` (`is_complete` → `is_absolute`), `delta-studio/CMakeLists.txt` (d3dx10.lib vor d3dx10d.lib).
 - `src/engine_sim_application.cpp` hat **CRLF**-Zeilenenden.
